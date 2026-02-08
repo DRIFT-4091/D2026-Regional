@@ -8,7 +8,7 @@ import edu.wpi.first.networktables.NetworkTableInstance;
 public final class Limelight {
     private Limelight() {}
 
-    // Change this if your Limelight name is not "limelight"
+    // Change this if your Limelight name isn't "limelight"
     private static final String TABLE_NAME = "limelight";
     private static NetworkTable table() {
         return NetworkTableInstance.getDefault().getTable(TABLE_NAME);

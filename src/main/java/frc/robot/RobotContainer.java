@@ -96,7 +96,7 @@ public class RobotContainer {
         joystick.options().and(joystick.triangle()).whileTrue(drivetrain.sysIdQuasistatic(Direction.kForward));
         joystick.options().and(joystick.square()).whileTrue(drivetrain.sysIdQuasistatic(Direction.kReverse));
 
-        // Reset field-centric heading on L1
+        // Reset field-centric heading on L1.
         joystick.L1().onTrue(drivetrain.runOnce(drivetrain::seedFieldCentric));
 
         // ---------------- LIMELIGHT: AIM ASSIST ----------------

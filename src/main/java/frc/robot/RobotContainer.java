@@ -36,7 +36,7 @@ public class RobotContainer {
 
     public final CommandSwerveDrivetrain drivetrain = TunerConstants.createDrivetrain();
 
-    // ---------------- LIMELIGHT DRIVE SETTINGS ----------------
+    // ---------------- LIMELIGHT DRIVE SETTINGS ---------------
     // Pick the pipeline index you want for aiming (set in limelight.local)
     private static final int LL_AIM_PIPELINE = 0;
 

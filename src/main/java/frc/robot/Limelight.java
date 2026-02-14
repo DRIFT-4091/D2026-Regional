@@ -46,9 +46,22 @@ public final class Limelight {
         table().getEntry("ledMode").setNumber(mode);
     }
 
+    /**
+     * Checks if the Limelight has a valid target with the specified AprilTag ID.
+     *
+     * @param targetTagId The AprilTag ID to check for
+     * @return true if a valid target is detected and matches the specified tag ID
+     */
     public static boolean hasTarget(int targetTagId) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'hasTarget'");
+        if (!hasTarget()) {
+            return false; // No target detected at all
+        }
+
+        // Get the detected AprilTag ID from NetworkTables
+        // The 'tid' field contains the ID of the primary detected AprilTag
+        double detectedTagId = table().getEntry("tid").getDouble(-1);
+
+        return detectedTagId == targetTagId;
     }
 
 }

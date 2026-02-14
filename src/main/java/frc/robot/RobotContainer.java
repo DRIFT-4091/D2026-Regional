@@ -13,6 +13,11 @@ import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.button.CommandPS4Controller;
 import edu.wpi.first.wpilibj2.command.button.RobotModeTriggers;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction;
+import com.pathplanner.lib.auto.AutoBuilder;
+import com.pathplanner.lib.controllers.PPHolonomicDriveController;
+import com.pathplanner.lib.config.RobotConfig;
+import com.pathplanner.lib.config.PIDConstants;
+import edu.wpi.first.wpilibj.DriverStation;
 
 import frc.robot.generated.TunerConstants;
 import frc.robot.subsystems.CommandSwerveDrivetrain;
@@ -36,7 +41,7 @@ public class RobotContainer {
 
     public final CommandSwerveDrivetrain drivetrain = TunerConstants.createDrivetrain();
 
-    // ---------------- LIMELIGHT DRIVE SETTINGS ---------------
+    // ---------------- LIMELIGHT DRIVE SETTINGS ----------------
     // Pick the pipeline index you want for aiming (set in limelight.local)
     private static final int LL_AIM_PIPELINE = 0;
 
@@ -57,12 +62,40 @@ public class RobotContainer {
     private static final double MAX_AUTO_FWD_MPS = 2.0;       // clamp auto forward speed
 
     public RobotContainer() {
-        // PID config
-        aimPid.setTolerance(1.0);          // degrees
+      aimPid.setTolerance(1.0);
         aimPid.enableContinuousInput(-180, 180);
+        distancePid.setTolerance(0.15);
 
-        distancePid.setTolerance(0.15);    // ta tolerance (tune)
         configureBindings();
+
+       RobotConfig config;
+
+        try {
+        config = RobotConfig.fromGUISettings();
+        } catch (Exception e) {
+        throw new RuntimeException("Failed to load PathPlanner GUI settings", e);
+    }
+
+
+        AutoBuilder.configure(
+            drivetrain::getPose,
+            drivetrain::resetPose,
+            drivetrain::getRobotRelativeSpeeds,
+            drivetrain::driveRobotRelative,
+
+            new PPHolonomicDriveController(
+            new PIDConstants(5.0, 0.0, 0.0), // Translation PID
+            new PIDConstants(5.0, 0.0, 0.0)  // Rotation PID
+            ),
+
+            config,
+
+            () -> DriverStation.getAlliance().orElse(DriverStation.Alliance.Blue)
+                == DriverStation.Alliance.Red,
+
+            (edu.wpi.first.wpilibj2.command.Subsystem) drivetrain
+        );
+
     }
 
     private void configureBindings() {
@@ -169,19 +202,9 @@ public class RobotContainer {
     }
 
     public Command getAutonomousCommand() {
-        final var idle = new SwerveRequest.Idle();
-        return Commands.sequence(
-            drivetrain.runOnce(() -> drivetrain.seedFieldCentric(Rotation2d.kZero)),
-            drivetrain.applyRequest(() ->
-                drive.withVelocityX(0.5)
-                    .withVelocityY(0)
-                    .withRotationalRate(0)
-            ).withTimeout(5.0),
-            drivetrain.applyRequest(() -> idle)
-        );
+            return AutoBuilder.buildAuto("2026V1");
     }
 }
-
 
 
 

@@ -46,4 +46,9 @@ public final class Limelight {
         table().getEntry("ledMode").setNumber(mode);
     }
 
+    public static boolean hasTarget(int targetTagId) {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'hasTarget'");
+    }
+
 }

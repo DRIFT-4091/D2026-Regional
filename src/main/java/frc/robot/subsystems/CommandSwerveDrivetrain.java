@@ -23,6 +23,16 @@ import edu.wpi.first.wpilibj.RobotController;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Subsystem;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
+import com.pathplanner.lib.auto.AutoBuilder;
+import com.pathplanner.lib.auto.NamedCommands;
+import com.pathplanner.lib.path.PathConstraints;
+import com.pathplanner.lib.util.DriveFeedforwards;
+
+
+
+
+import edu.wpi.first.math.kinematics.ChassisSpeeds;
+
 
 import frc.robot.generated.TunerConstants.TunerSwerveDrivetrain;
 
@@ -300,4 +310,29 @@ public class CommandSwerveDrivetrain extends TunerSwerveDrivetrain implements Su
     public Optional<Pose2d> samplePoseAt(double timestampSeconds) {
         return super.samplePoseAt(Utils.fpgaToCurrentTime(timestampSeconds));
     }
+
+    public Pose2d getPose() {
+    return getState().Pose;
+    }
+
+    public void resetPose(Pose2d pose) {
+        super.resetPose(pose);
+    }
+
+
+    public ChassisSpeeds getRobotRelativeSpeeds() {
+    return getState().Speeds;
+    }
+
+    private final SwerveRequest.RobotCentric autoRequest = new SwerveRequest.RobotCentric();
+
+    public void driveRobotRelative(ChassisSpeeds speeds, DriveFeedforwards feedforwards) {
+        setControl(
+            autoRequest
+            .withVelocityX(speeds.vxMetersPerSecond)
+            .withVelocityY(speeds.vyMetersPerSecond)
+            .withRotationalRate(speeds.omegaRadiansPerSecond)
+        );
+    }
+    
 }

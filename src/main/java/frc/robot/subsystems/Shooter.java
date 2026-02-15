@@ -29,8 +29,8 @@ public class Shooter extends SubsystemBase {
   private static final double feed_voltage = 7.0;
   private static final double feed_reversed_voltage = -7.0;
 
-  private static final double shoot_voltage = 9.0;
-  private static final double shoot_reversed_voltage = -9.0;
+  private static final double shoot_voltage = -9.0;
+  private static final double shoot_reversed_voltage = 9.0;
 
   private final SparkMax feed_motor = new SparkMax(neo_id, MotorType.kBrushless);
   private final TalonFX shoot_motor = new TalonFX(kraken_id);
@@ -77,7 +77,7 @@ public class Shooter extends SubsystemBase {
   // ===== L2 Intake Mode =====
 
   public void runIntake() {
-    setVoltages(shoot_voltage, 0);
+    setVoltages(shoot_voltage, feed_voltage);
   }
 
   // ===== L1 Feed =====
@@ -92,13 +92,13 @@ public class Shooter extends SubsystemBase {
     setVoltages(volt, 0);
   }
 
-  // ===== L1 + triangle =====
+  // ===== L1 + square  =====
 
   public void runIntakeReverse() {
     setVoltages(shoot_reversed_voltage, 0);
   }
 
-  // ===== L1 + square =====
+  // ===== L1 + circle =====
 
   public void runFeedReverse() {
     setVoltages(feed_reversed_voltage, 0);

@@ -54,7 +54,7 @@ public class TunerConstants {
     private static final Current kSlipCurrent = Amps.of(120);
 
     // Initial configs for the drive and steer motors and the azimuth encoder; these cannot be null.
-    // Some configs will be ovgit initerwritten; check the `witvvvvvvvh*InitialConfigs()` API documentation.
+    // Some configs will be overwritten; check the `with*InitialConfigs()` API documentation.
 private static final TalonFXConfiguration driveInitialConfigs = new TalonFXConfiguration();
     // .withCurrentLimits(
     //     new CurrentLimitsConfigs()
@@ -106,7 +106,7 @@ private static final TalonFXConfiguration driveInitialConfigs = new TalonFXConfi
     private static final boolean kInvertLeftSide = true;
     private static final boolean kInvertRightSide = false;
 
-    private static final int kPigeonId = 5;
+    private static final int kPigeonId = 0;
 
     // These are only used for simulation
     private static final MomentOfInertia kSteerInertia = KilogramSquareMeters.of(0.01);
@@ -212,7 +212,7 @@ private static final TalonFXConfiguration driveInitialConfigs = new TalonFXConfi
 
     /**
      * Creates a CommandSwerveDrivetrain instance.
-     * This should only be called once in your robot program,.
+     * This should only be called once in your robot program.
      */
     public static CommandSwerveDrivetrain createDrivetrain() {
         return new CommandSwerveDrivetrain(

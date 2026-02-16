@@ -16,6 +16,11 @@ import edu.wpi.first.wpilibj2.command.button.CommandPS4Controller;
 import edu.wpi.first.wpilibj2.command.button.RobotModeTriggers;
 import edu.wpi.first.wpilibj2.command.button.Trigger;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction;
+import com.pathplanner.lib.auto.AutoBuilder;
+import com.pathplanner.lib.controllers.PPHolonomicDriveController;
+import com.pathplanner.lib.config.RobotConfig;
+import com.pathplanner.lib.config.PIDConstants;
+
 import frc.robot.generated.TunerConstants;
 import frc.robot.subsystems.CommandSwerveDrivetrain;
 import frc.robot.subsystems.Shooter;
@@ -57,8 +62,8 @@ public class RobotContainer {
     private static final double READY_TX_DEG = 1.0;         // Horizontal alignment tolerance (degrees)
     private static final double READY_TA_TOL = 0.15;        // Distance tolerance (target area)
     private static final double MAX_AIM_RAD_PER_SEC = 2.5;  // Max rotation speed for aim assist
+    private static final double MAX_AUTO_FWD_MPS = 2.0;     // Max auto forward speed
     private static final double READY_RUMBLE = 1.0;         // Controller rumble intensity when ready
-
 
     public RobotContainer() {
         aimPid.setTolerance(1.0);
@@ -67,6 +72,34 @@ public class RobotContainer {
         distancePid.setTolerance(0.15);
 
         configureBindings();
+
+        // ---------------- PATHPLANNER AUTOBUILDER ----------------
+        RobotConfig config;
+
+        try {
+            config = RobotConfig.fromGUISettings();
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to load PathPlanner GUI settings", e);
+        }
+
+        AutoBuilder.configure(
+            drivetrain::getPose,
+            drivetrain::resetPose,
+            drivetrain::getRobotRelativeSpeeds,
+            drivetrain::driveRobotRelative,
+
+            new PPHolonomicDriveController(
+                new PIDConstants(5.0, 0.0, 0.0), // Translation PID
+                new PIDConstants(5.0, 0.0, 0.0)  // Rotation PID
+            ),
+
+            config,
+
+            () -> DriverStation.getAlliance().orElse(DriverStation.Alliance.Blue)
+                == DriverStation.Alliance.Red,
+
+            (edu.wpi.first.wpilibj2.command.Subsystem) drivetrain
+        );
     }
 
     private void configureBindings() {
@@ -120,11 +153,8 @@ public class RobotContainer {
         );
 
         // ---------------- SYSTEM IDENTIFICATION (SysId) ----------------
-        // Share + Triangle = dynamic forward, Share + Square = dynamic reverse
         joystick.share().and(joystick.triangle()).whileTrue(drivetrain.sysIdDynamic(Direction.kForward));
         joystick.share().and(joystick.square()).whileTrue(drivetrain.sysIdDynamic(Direction.kReverse));
-
-        // Options + Triangle = quasistatic forward, Options + Square = quasistatic reverse
         joystick.options().and(joystick.triangle()).whileTrue(drivetrain.sysIdQuasistatic(Direction.kForward));
         joystick.options().and(joystick.square()).whileTrue(drivetrain.sysIdQuasistatic(Direction.kReverse));
 
@@ -178,8 +208,6 @@ public class RobotContainer {
 
     /**
      * Gets the AprilTag IDs for the current alliance.
-     *
-     * @return Array of AprilTag IDs for current alliance, or empty array if no alliance
      */
     private int[] getAllianceTagIds() {
         var alliance = DriverStation.getAlliance();
@@ -193,8 +221,6 @@ public class RobotContainer {
 
     /**
      * Checks if any alliance-specific AprilTag is visible.
-     *
-     * @return true if any alliance AprilTag is detected
      */
     private boolean hasAnyAllianceTarget() {
         int[] targetIds = getAllianceTagIds();
@@ -208,22 +234,13 @@ public class RobotContainer {
 
     /**
      * Checks if the robot is ready to shoot.
-     * Requirements:
-     * 1. Alliance AprilTag is visible
-     * 2. Robot is aligned horizontally (tx within tolerance)
-     * 3. Robot is at correct distance (ta within tolerance)
-     *
-     * Note: Does NOT check shooter motor speed - motor only spins when R2 is pressed.
-     *
-     * @return true if robot is positioned correctly to shoot
+     * Requirements: alliance AprilTag visible, aligned horizontally, at correct distance.
      */
     private boolean isShotReady() {
-        // Check vision target
         if (!hasAnyAllianceTarget()) {
             return false;
         }
 
-        // Check alignment and distance
         double tx = Limelight.tx();
         double ta = Limelight.ta();
 
@@ -235,52 +252,34 @@ public class RobotContainer {
 
     /**
      * Calculates shooter voltage based on Limelight distance to AprilTag.
-     * Uses REBUILT FRC Challenge AprilTag IDs for blue and red alliances.
      *
-     * Distance-to-voltage mapping (tunable based on testing):
+     * Distance-to-voltage mapping:
      * - ta >= 4.0 (very close): 6.0V
      * - ta = 2.0 (optimal):     9.0V
      * - ta = 1.0 (far):         11.0V
      * - ta <= 0.75 (very far):  12.0V
-     *
-     * @return Shooter voltage (0.0 if no valid target detected)
      */
     public double getShooterVoltageFromLimelight() {
-        // Check if any alliance AprilTag is visible
         if (!hasAnyAllianceTarget()) {
             return 0.0;
         }
 
-        // Get distance measurement from Limelight (ta = target area %)
         double ta = Limelight.ta();
 
-        // Calculate voltage based on distance (closer = lower voltage, farther = higher voltage)
         if (ta >= 4.0) {
             return 6.0;
         } else if (ta >= 2.5) {
-            return 6.0 + (4.0 - ta) * (2.0 / 1.5);  // Interpolate 6.0V to 8.0V
+            return 6.0 + (4.0 - ta) * (2.0 / 1.5);
         } else if (ta >= 1.5) {
-            return 8.0 + (2.5 - ta) * (2.0 / 1.0);  // Interpolate 8.0V to 10.0V
+            return 8.0 + (2.5 - ta) * (2.0 / 1.0);
         } else if (ta >= 0.75) {
-            return 10.0 + (1.5 - ta) * (1.5 / 0.75); // Interpolate 10.0V to 11.5V
+            return 10.0 + (1.5 - ta) * (1.5 / 0.75);
         } else {
-            return 12.0; // Maximum voltage for very far shots
+            return 12.0;
         }
     }
 
     public Command getAutonomousCommand() {
-        final var idle = new SwerveRequest.Idle();
-        return Commands.sequence(
-            drivetrain.runOnce(() -> drivetrain.seedFieldCentric(Rotation2d.kZero)),
-            drivetrain.applyRequest(() ->
-                drive.withVelocityX(0.5)
-                    .withVelocityY(0)
-                    .withRotationalRate(0)
-            ).withTimeout(5.0),
-            drivetrain.applyRequest(() -> idle)
-        );
+        return AutoBuilder.buildAuto("2026V1");
     }
 }
-
-
-

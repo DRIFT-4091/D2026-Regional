@@ -55,34 +55,15 @@ public class TunerConstants {
 
     // Initial configs for the drive and steer motors and the azimuth encoder; these cannot be null.
     // Some configs will be overwritten; check the `with*InitialConfigs()` API documentation.
-private static final TalonFXConfiguration driveInitialConfigs = new TalonFXConfiguration();
-    // .withCurrentLimits(
-    //     new CurrentLimitsConfigs()
-    //         .withSupplyCurrentLimitEnable(true)
-    //         .withSupplyCurrentLimit(Amps.of(85))
-    //         .withStatorCurrentLimitEnable(true)
-    //         .withStatorCurrentLimit(Amps.of(120))
-    // )
-    // .withOpenLoopRamps(
-    //     new OpenLoopRampsConfigs()
-    //         .withDutyCycleOpenLoopRampPeriod(0.2)
-    //         .withVoltageOpenLoopRampPeriod(0.1)
-    // )
-    // .withClosedLoopRamps(
-    //     new ClosedLoopRampsConfigs()
-    //         .withDutyCycleClosedLoopRampPeriod(0.2)
-    //         .withVoltageClosedLoopRampPeriod(0.1)
-    // );
-
-    private static final TalonFXConfiguration steerInitialConfigs = new TalonFXConfiguration();
-        // .withCurrentLimits(
-        //     new CurrentLimitsConfigs()
-        //         // Swerve azimuth does not require much torque output, so we can set a relatively low
-        //         // stator current limit to help avoid brownouts without impacting performance.
-        //         .withStatorCurrentLimit(Amps.of(80))
-        //         .withStatorCurrentLimitEnable(true)
-        //         .withStatorCurrentLimit(Amps.of(120))
-        // );
+    private static final TalonFXConfiguration driveInitialConfigs = new TalonFXConfiguration();
+    private static final TalonFXConfiguration steerInitialConfigs = new TalonFXConfiguration()
+        .withCurrentLimits(
+            new CurrentLimitsConfigs()
+                // Swerve azimuth does not require much torque output, so we can set a relatively low
+                // stator current limit to help avoid brownouts without impacting performance.
+                .withStatorCurrentLimit(Amps.of(60))
+                .withStatorCurrentLimitEnable(true)
+        );
     private static final CANcoderConfiguration encoderInitialConfigs = new CANcoderConfiguration();
     // Configs for the Pigeon 2; leave this null to skip applying Pigeon 2 configs
     private static final Pigeon2Configuration pigeonConfigs = null;
@@ -93,7 +74,7 @@ private static final TalonFXConfiguration driveInitialConfigs = new TalonFXConfi
 
     // Theoretical free speed (m/s) at 12 V applied output;
     // This needs to be tuned to your individual robot
-    public static final LinearVelocity kSpeedAt12Volts = MetersPerSecond.of(5.03);
+    public static final LinearVelocity kSpeedAt12Volts = MetersPerSecond.of(4.58);
 
     // Every 1 rotation of the azimuth results in kCoupleRatio drive motor turns;
     // This may need to be tuned to your individual robot
@@ -101,12 +82,12 @@ private static final TalonFXConfiguration driveInitialConfigs = new TalonFXConfi
 
     private static final double kDriveGearRatio = 6.746031746031747;
     private static final double kSteerGearRatio = 21.428571428571427;
-    private static final Distance kWheelRadius = Inches.of(2.2);
+    private static final Distance kWheelRadius = Inches.of(2);
 
     private static final boolean kInvertLeftSide = true;
     private static final boolean kInvertRightSide = false;
 
-    private static final int kPigeonId = 0;
+    private static final int kPigeonId = 12;
 
     // These are only used for simulation
     private static final MomentOfInertia kSteerInertia = KilogramSquareMeters.of(0.01);
@@ -145,48 +126,48 @@ private static final TalonFXConfiguration driveInitialConfigs = new TalonFXConfi
 
 
     // Front Left
-    private static final int kFrontLeftDriveMotorId = 3;
-    private static final int kFrontLeftSteerMotorId = 2;
-    private static final int kFrontLeftEncoderId = 1;
-    private static final Angle kFrontLeftEncoderOffset = Rotations.of(-0.006591796875);
-    private static final boolean kFrontLeftSteerMotorInverted = false;
+    private static final int kFrontLeftDriveMotorId = 0;
+    private static final int kFrontLeftSteerMotorId = 1;
+    private static final int kFrontLeftEncoderId = 2;
+    private static final Angle kFrontLeftEncoderOffset = Rotations.of(-0.076904296875);
+    private static final boolean kFrontLeftSteerMotorInverted = true;
     private static final boolean kFrontLeftEncoderInverted = false;
 
-    private static final Distance kFrontLeftXPos = Inches.of(11);
-    private static final Distance kFrontLeftYPos = Inches.of(11);
+    private static final Distance kFrontLeftXPos = Inches.of(10);
+    private static final Distance kFrontLeftYPos = Inches.of(10);
 
     // Front Right
-    private static final int kFrontRightDriveMotorId = 6;
-    private static final int kFrontRightSteerMotorId = 0;
-    private static final int kFrontRightEncoderId = 4;
-    private static final Angle kFrontRightEncoderOffset = Rotations.of(-0.322509765625);
+    private static final int kFrontRightDriveMotorId = 3;
+    private static final int kFrontRightSteerMotorId = 4;
+    private static final int kFrontRightEncoderId = 5;
+    private static final Angle kFrontRightEncoderOffset = Rotations.of(-0.319580078125);
     private static final boolean kFrontRightSteerMotorInverted = false;
     private static final boolean kFrontRightEncoderInverted = false;
 
-    private static final Distance kFrontRightXPos = Inches.of(11);
-    private static final Distance kFrontRightYPos = Inches.of(-11);
+    private static final Distance kFrontRightXPos = Inches.of(10);
+    private static final Distance kFrontRightYPos = Inches.of(-10);
 
     // Back Left
     private static final int kBackLeftDriveMotorId = 9;
-    private static final int kBackLeftSteerMotorId = 8;
-    private static final int kBackLeftEncoderId = 7;
-    private static final Angle kBackLeftEncoderOffset = Rotations.of(-0.134033203125);
+    private static final int kBackLeftSteerMotorId = 10;
+    private static final int kBackLeftEncoderId = 11;
+    private static final Angle kBackLeftEncoderOffset = Rotations.of(-0.0283203125);
     private static final boolean kBackLeftSteerMotorInverted = false;
     private static final boolean kBackLeftEncoderInverted = false;
 
-    private static final Distance kBackLeftXPos = Inches.of(-11);
-    private static final Distance kBackLeftYPos = Inches.of(11);
+    private static final Distance kBackLeftXPos = Inches.of(-10);
+    private static final Distance kBackLeftYPos = Inches.of(10);
 
     // Back Right
-    private static final int kBackRightDriveMotorId = 12;
-    private static final int kBackRightSteerMotorId = 11;
-    private static final int kBackRightEncoderId = 10;
-    private static final Angle kBackRightEncoderOffset = Rotations.of(-0.165771484375);
-    private static final boolean kBackRightSteerMotorInverted = false;
+    private static final int kBackRightDriveMotorId = 6;
+    private static final int kBackRightSteerMotorId = 7;
+    private static final int kBackRightEncoderId = 8;
+    private static final Angle kBackRightEncoderOffset = Rotations.of(-0.277099609375);
+    private static final boolean kBackRightSteerMotorInverted = true;
     private static final boolean kBackRightEncoderInverted = false;
 
-    private static final Distance kBackRightXPos = Inches.of(-11);
-    private static final Distance kBackRightYPos = Inches.of(-11);
+    private static final Distance kBackRightXPos = Inches.of(-10);
+    private static final Distance kBackRightYPos = Inches.of(-10);
 
 
     public static final SwerveModuleConstants<TalonFXConfiguration, TalonFXConfiguration, CANcoderConfiguration> FrontLeft =
@@ -212,7 +193,7 @@ private static final TalonFXConfiguration driveInitialConfigs = new TalonFXConfi
 
     /**
      * Creates a CommandSwerveDrivetrain instance.
-     * This should only be called once in your robot program.
+     * This should only be called once in your robot program,.
      */
     public static CommandSwerveDrivetrain createDrivetrain() {
         return new CommandSwerveDrivetrain(

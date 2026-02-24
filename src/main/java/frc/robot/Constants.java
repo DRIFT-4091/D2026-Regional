@@ -15,11 +15,11 @@ public final class Constants {
     public static final double MAX_ANGULAR_RATE = RotationsPerSecond.of(0.75).in(RadiansPerSecond);
 
     // Drivetrain deadbands
-    public static final double DRIVE_DEADBAND = MAX_SPEED * 0.25;
-    public static final double ROTATION_DEADBAND = MAX_ANGULAR_RATE * 0.25;
+    public static final double DRIVE_DEADBAND = MAX_SPEED * 0.2;
+    public static final double ROTATION_DEADBAND = MAX_ANGULAR_RATE * 0.2;
 
     // ---------------- CONTROLLER CONSTANTS ----------------
-    public static final int CONTROLLER_PORT = 1;
+    public static final int CONTROLLER_PORT = 0;
 
     // ---------------- LIMELIGHT CONSTANTS ----------------
     public static final int LL_AIM_PIPELINE = 0;

@@ -24,7 +24,7 @@ public class OI {
     private final CommandSwerveDrivetrain drivetrain;
 
     // No shooter
-        //private final Shooter shooter;
+    private final Shooter shooter;
 
     private final DriverAssist driverAssist;
     private final Telemetry logger;
@@ -34,9 +34,9 @@ public class OI {
     private final SwerveRequest.SwerveDriveBrake brake;
     private final SwerveRequest.PointWheelsAt point;
 
-    public OI(CommandSwerveDrivetrain drivetrain, DriverAssist driverAssist, Telemetry logger) {
+    public OI(CommandSwerveDrivetrain drivetrain, DriverAssist driverAssist, Telemetry logger, Shooter shooter) {
         this.drivetrain = drivetrain;
-        //this.shooter = shooter;
+        this.shooter = shooter;
         this.driverAssist = driverAssist;
         this.logger = logger;
         this.joystick = new CommandPS4Controller(Constants.CONTROLLER_PORT);
@@ -59,10 +59,11 @@ public class OI {
     private void configureBindings() {
         configureDefaultCommands();
         configureDrivetrainControls();
-       // configureShooterControls();
+        configureShooterControls();
         configureSysIdControls();
         configureDriverAssist();
         configureRumbleFeedback();
+
 
         // Register telemetry
         drivetrain.registerTelemetry(logger::telemeterize);
@@ -76,7 +77,7 @@ public class OI {
         drivetrain.setDefaultCommand(
             drivetrain.applyRequest(() ->
                 drive.withVelocityX(joystick.getLeftY() * Constants.MAX_SPEED)
-                    .withVelocityY(-joystick.getLeftX() * Constants.MAX_SPEED)
+                    .withVelocityY(joystick.getLeftX() * Constants.MAX_SPEED)
                     .withRotationalRate(-joystick.getRightX() * Constants.MAX_ANGULAR_RATE)
             )
         );
@@ -85,6 +86,13 @@ public class OI {
         final var idle = new SwerveRequest.Idle();
         RobotModeTriggers.disabled().whileTrue(
             drivetrain.applyRequest(() -> idle).ignoringDisable(true)
+        );
+
+        // On enable: snap all wheels to forward (start) position
+        RobotModeTriggers.disabled().onFalse(
+            drivetrain.applyRequest(() ->
+                point.withModuleDirection(new Rotation2d(0))
+            ).withTimeout(0.75)
         );
     }
 
@@ -95,43 +103,45 @@ public class OI {
         // Cross = brake wheels
         joystick.cross().whileTrue(drivetrain.applyRequest(() -> brake));
 
-        // Circle = point wheels (manual wheel direction)
-        joystick.circle().whileTrue(drivetrain.applyRequest(() ->
+        // Circle (without L1) = point wheels (manual wheel direction)
+        joystick.circle().and(joystick.L1().negate()).whileTrue(drivetrain.applyRequest(() ->
             point.withModuleDirection(new Rotation2d(-joystick.getLeftY(), -joystick.getLeftX()))
         ));
 
-        // L1 = reset field-centric heading
-        joystick.L1().onTrue(drivetrain.runOnce(drivetrain::seedFieldCentric));
+        // L1 (without circle or square) = reset field-centric heading
+        joystick.L1()
+            .onTrue(drivetrain.runOnce(drivetrain::seedFieldCentric));
     }
 
     /**
      * Configures shooter controls.
      */
-    // private void configureShooterControls() {
-    //     // R2 = shoot (auto voltage from Limelight distance)
-    //     joystick.R2().whileTrue(
-    //         Commands.runEnd(
-    //             () -> shooter.runShoot(driverAssist.getShooterVoltageFromLimelight()),
-    //             shooter::stop,
-    //             shooter
-    //         )
-    //     );
+    private void configureShooterControls() {
+        // R2 = shoot (auto voltage from Limelight distance)
 
-    //     // L2 = intake
-    //     joystick.L2().whileTrue(
-    //         Commands.runEnd(shooter::runIntake, shooter::stop, shooter)
-    //     );
+        joystick.R2().whileTrue(
+            Commands.runEnd(
+                () -> shooter.runShoot(),
+                shooter::stop,
+                shooter
+            )
+        );
 
-    //     // L1 + Circle = unjam feeder (reverse)
-    //     joystick.L1().and(joystick.circle()).whileTrue(
-    //         Commands.runEnd(shooter::runFeedReverse, shooter::stop, shooter)
-    //     );
+        // L2 = intake
+        joystick.L2().whileTrue(
+            Commands.runEnd(shooter::runIntake, shooter::stop, shooter)
+        );
 
-    //     // L1 + Square = unjam intake (reverse)
-    //     joystick.L1().and(joystick.square()).whileTrue(
-    //         Commands.runEnd(shooter::runIntakeReverse, shooter::stop, shooter)
-    //     );
-    // }
+        // L1 + Circle = unjam feeder (reverse)
+        joystick.L2().and(joystick.circle()).whileTrue(
+            Commands.runEnd(shooter::runFeedReverse, shooter::stop, shooter)
+        );
+
+        // L1 + Square = unjam intake (reverse)
+        joystick.R2().and(joystick.circle()).whileTrue(
+            Commands.runEnd(shooter::runFeedReverse, shooter::stop, shooter)
+        );
+    }
 
     /**
      * Configures System Identification (SysId) controls.

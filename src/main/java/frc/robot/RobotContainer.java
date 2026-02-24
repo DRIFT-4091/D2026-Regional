@@ -24,7 +24,7 @@ public class RobotContainer {
     // Subsystems
     private final CommandSwerveDrivetrain drivetrain;
     
-    //private final Shooter shooter;
+    private final Shooter shooter;
 
     // Helper classes
     private final DriverAssist driverAssist;
@@ -37,7 +37,7 @@ public class RobotContainer {
 
         // No shooter because we are practicing
 
-            // shooter = new Shooter();
+        shooter = new Shooter();
 
         // Initialize helper classes
 
@@ -48,7 +48,7 @@ public class RobotContainer {
         configurePathPlanner();
 
         // Initialize operator interface (configures all bindings)
-        oi = new OI(drivetrain, driverAssist, logger);
+        oi = new OI(drivetrain, driverAssist, logger, shooter);
     }
 
     /**

@@ -22,14 +22,12 @@ public class Shooter extends SubsystemBase {
 
   // ====== CHANGE THESE TO YOUR REAL CAN IDs ======
 
-  private static final int neo_id = 15;      // Top shooter roller
-  private static final int kraken_id = 16;   // Bottom intake / feeder roller
+  private static final int neo_id = 14;      // Top shooter roller
+  private static final int kraken_id = 13;   // Bottom intake / feeder roller
 
   private static final double feed_voltage = 7.0;
-  private static final double feed_reversed_voltage = -7.0;
 
-  private static final double shoot_voltage = -9.0;
-  private static final double shoot_reversed_voltage = 9.0;
+  private static final double shoot_voltage = 9.0;
 
   private final SparkMax feed_motor = new SparkMax(neo_id, MotorType.kBrushless);
   private final TalonFX shoot_motor = new TalonFX(kraken_id);
@@ -76,31 +74,19 @@ public class Shooter extends SubsystemBase {
   // ===== L2 Intake Mode =====
 
   public void runIntake() {
-    setVoltages(shoot_voltage, feed_voltage);
-  }
-
-  // ===== L1 Feed =====
-
-  public void runFeed() {
-    setVoltages(0, feed_voltage);
+    setVoltages(shoot_voltage, -feed_voltage);
   }
 
   //  ===== R2 Shooter Mode =====
 
-   public void runShoot(double volt) { // double volt comes from the limelight
-    setVoltages(volt, 0);
+   public void runShoot() { // double volt comes from the limelight
+    setVoltages(shoot_voltage,feed_voltage);
   }
 
-  // ===== L1 + square  =====
-
-  public void runIntakeReverse() {
-    setVoltages(shoot_reversed_voltage, 0);
-  }
-
-  // ===== L1 + circle =====
+  // ===== L2 + circle =====
 
   public void runFeedReverse() {
-    setVoltages(feed_reversed_voltage, 0);
+    setVoltages(-feed_voltage, -shoot_voltage);
   }
 
   // ===== Core Voltage Setter =====

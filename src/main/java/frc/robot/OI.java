@@ -54,7 +54,6 @@ public class OI {
         configureDrivetrainControls();
         configureShooterControls();
         configureDriverAssist();
-        configureRumbleFeedback();
         drivetrain.registerTelemetry(logger::telemeterize);
     }
 
@@ -81,7 +80,7 @@ public class OI {
 
     private void configureDrivetrainControls() {
         // LB = reset field-centric heading
-        joystick.leftBumper().onTrue(drivetrain.runOnce(drivetrain::seedFieldCentric));
+        triggerButton(Constants.LEFT_BUTTON).onTrue(drivetrain.runOnce(drivetrain::seedFieldCentric));
 
         // X = resistance mode (brake wheels while held)
         joystick.x().whileTrue(drivetrain.applyRequest(() -> brake));
@@ -89,13 +88,17 @@ public class OI {
 
     private void configureShooterControls() {
         // LT = intake
-        joystick.leftTrigger(0.5).whileTrue(
+        joystick.leftTrigger().whileTrue(
             Commands.runEnd(shooter::runIntake, shooter::stop, shooter)
         );
 
-        // RT = shooter
-        joystick.rightTrigger(0.5).whileTrue(
-            Commands.runEnd(shooter::runShoot, shooter::stop, shooter)
+        // RT = shooter (Limelight voltage; no run if AprilTag not seen)
+        joystick.rightTrigger().whileTrue(
+            Commands.runEnd(
+                () -> shooter.runShoot(driverAssist.getShooterVoltageFromLimelight()),
+                shooter::stop,
+                shooter
+            )
         );
 
         // L4 (left back paddle) = inverse intake
@@ -111,7 +114,7 @@ public class OI {
 
     private void configureDriverAssist() {
         // RB = driver assist (AprilTag aim)
-        joystick.rightBumper().whileTrue(
+        triggerButton(Constants.RIGHT_BUTTON).whileTrue(
             Commands.runOnce(() -> {
                 Limelight.setPipeline(Constants.LL_AIM_PIPELINE);
                 Limelight.setLedMode(0);
@@ -136,25 +139,7 @@ public class OI {
         );
     }
 
-    private void configureRumbleFeedback() {
-        Trigger shotReady = new Trigger(() ->
-            DriverStation.isTeleopEnabled() && driverAssist.isShotReady()
-        );
-
-        shotReady.whileTrue(
-            Commands.run(() ->
-                joystick.setRumble(RumbleType.kBothRumble, Constants.READY_RUMBLE)
-            )
-        );
-
-        shotReady.onFalse(
-            Commands.runOnce(() ->
-                joystick.setRumble(RumbleType.kBothRumble, 0.0)
-            )
-        );
-    }
-
-    /** Trigger for a raw button (e.g. GameSir G7 SE back paddles L4/R4). */
+    /** Trigger for a raw button (e.g. GameSir back paddles, LB/RB if mapped as raw). */
     private Trigger triggerButton(int buttonId) {
         return new Trigger(() -> joystick.getHID().getRawButton(buttonId));
     }

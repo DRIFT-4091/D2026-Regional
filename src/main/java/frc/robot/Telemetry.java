@@ -7,7 +7,6 @@ import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import edu.wpi.first.math.kinematics.SwerveModulePosition;
 import edu.wpi.first.math.kinematics.SwerveModuleState;
-import edu.wpi.first.networktables.BooleanPublisher;
 import edu.wpi.first.networktables.DoubleArrayPublisher;
 import edu.wpi.first.networktables.DoublePublisher;
 import edu.wpi.first.networktables.NetworkTable;
@@ -56,14 +55,6 @@ public class Telemetry {
     private final NetworkTable table = inst.getTable("Pose");
     private final DoubleArrayPublisher fieldPub = table.getDoubleArrayTopic("robotPose").publish();
     private final StringPublisher fieldTypePub = table.getStringTopic(".type").publish();
-
-    /* Limelight vision data for Elastic / dashboards */
-    private final NetworkTable limelightTable = inst.getTable("Limelight");
-    private final DoublePublisher limelightTx = limelightTable.getDoubleTopic("tx").publish();
-    private final DoublePublisher limelightTy = limelightTable.getDoubleTopic("ty").publish();
-    private final DoublePublisher limelightTa = limelightTable.getDoubleTopic("ta").publish();
-    private final DoublePublisher limelightTid = limelightTable.getDoubleTopic("tid").publish();
-    private final BooleanPublisher limelightHasTarget = limelightTable.getBooleanTopic("hasTarget").publish();
 
     /* Mechanisms to represent the swerve module states */
     private final Mechanism2d[] m_moduleMechanisms = new Mechanism2d[] {
@@ -126,12 +117,5 @@ public class Telemetry {
             m_moduleDirections[i].setAngle(state.ModuleStates[i].angle);
             m_moduleSpeeds[i].setLength(state.ModuleStates[i].speedMetersPerSecond / (2 * MaxSpeed));
         }
-
-        /* Publish Limelight data for Elastic dashboard */
-        limelightTx.set(Limelight.tx());
-        limelightTy.set(Limelight.ty());
-        limelightTa.set(Limelight.ta());
-        limelightTid.set(Limelight.tid());
-        limelightHasTarget.set(Limelight.hasTarget());
     }
 }

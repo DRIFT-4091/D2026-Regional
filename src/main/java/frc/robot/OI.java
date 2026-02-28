@@ -93,9 +93,13 @@ public class OI {
             Commands.runEnd(shooter::runIntake, shooter::stop, shooter)
         );
 
-        // RT = shooter
+        // RT = shooter (Limelight voltage; no run if AprilTag not seen)
         joystick.rightTrigger(0.5).whileTrue(
-            Commands.runEnd(shooter::runShoot, shooter::stop, shooter)
+            Commands.runEnd(
+                () -> shooter.runShoot(driverAssist.getShooterVoltageFromLimelight()),
+                shooter::stop,
+                shooter
+            )
         );
 
         // L4 (left back paddle) = inverse intake

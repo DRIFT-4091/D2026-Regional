@@ -79,8 +79,16 @@ public class Shooter extends SubsystemBase {
 
   //  ===== R2 Shooter Mode =====
 
-   public void runShoot() { // double volt comes from the limelight
-    setVoltages(shoot_voltage,feed_voltage);
+  /**
+   * Runs shooter at the given Kraken voltage (e.g. from Limelight distance).
+   * If voltage is &lt;= 0 (e.g. no AprilTag seen), stops the shooter.
+   */
+  public void runShoot(double krakenVoltageFromLimelight) {
+    if (krakenVoltageFromLimelight <= 0) {
+      stop();
+      return;
+    }
+    setVoltages(krakenVoltageFromLimelight, feed_voltage);
   }
 
   // ===== L2 + circle =====

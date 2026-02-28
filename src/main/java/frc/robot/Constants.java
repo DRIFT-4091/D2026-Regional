@@ -20,6 +20,10 @@ public final class Constants {
 
     // ---------------- CONTROLLER CONSTANTS ----------------
     public static final int CONTROLLER_PORT = 0;
+    /** GameSir G7 SE: left back paddle (L4) raw button ID; adjust if your mapping differs */
+    public static final int GAMESIR_L4_BUTTON = 5;
+    /** GameSir G7 SE: right back paddle (R4) raw button ID; adjust if your mapping differs */
+    public static final int GAMESIR_R4_BUTTON = 6;
 
     // ---------------- LIMELIGHT CONSTANTS ----------------
     public static final int LL_AIM_PIPELINE = 0;

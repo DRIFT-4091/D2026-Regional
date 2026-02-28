@@ -89,6 +89,16 @@ public class Shooter extends SubsystemBase {
     setVoltages(-feed_voltage, -shoot_voltage);
   }
 
+  /** Reverse shooter (R4 paddle). */
+  public void runShootReverse() {
+    setVoltages(-shoot_voltage, -feed_voltage);
+  }
+
+  /** Reverse intake (L4 paddle). */
+  public void runIntakeReverse() {
+    setVoltages(-shoot_voltage, feed_voltage);
+  }
+
   // ===== Core Voltage Setter =====
   public void setVoltages(double kraken_v, double neo_v) {
     shoot_motor.setControl(krakenVoltage.withOutput(kraken_v));

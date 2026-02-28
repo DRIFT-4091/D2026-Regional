@@ -8,28 +8,25 @@ import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.GenericHID.RumbleType;
 import edu.wpi.first.wpilibj2.command.Commands;
-import edu.wpi.first.wpilibj2.command.button.CommandPS4Controller;
+import edu.wpi.first.wpilibj2.command.button.CommandXboxController;
 import edu.wpi.first.wpilibj2.command.button.RobotModeTriggers;
 import edu.wpi.first.wpilibj2.command.button.Trigger;
-import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction;
 
 import frc.robot.subsystems.CommandSwerveDrivetrain;
 import frc.robot.subsystems.Shooter;
 
 /**
- * Operator Interface - handles all controller bindings and driver inputs.
+ * Operator Interface - handles all controller bindings for GameSir G7 SE (Xbox layout).
+ * Left stick: strafe + forward/back. Right stick: rotation.
+ * LT=intake, RT=shooter, LB=reset field, RB=driver assist, R4=inverse shooter, L4=inverse intake, X=resistance.
  */
 public class OI {
-    private final CommandPS4Controller joystick;
+    private final CommandXboxController joystick;
     private final CommandSwerveDrivetrain drivetrain;
-
-    // No shooter
     private final Shooter shooter;
-
     private final DriverAssist driverAssist;
     private final Telemetry logger;
 
-    // Swerve requests
     private final SwerveRequest.FieldCentric drive;
     private final SwerveRequest.SwerveDriveBrake brake;
     private final SwerveRequest.PointWheelsAt point;
@@ -39,9 +36,8 @@ public class OI {
         this.shooter = shooter;
         this.driverAssist = driverAssist;
         this.logger = logger;
-        this.joystick = new CommandPS4Controller(Constants.CONTROLLER_PORT);
+        this.joystick = new CommandXboxController(Constants.CONTROLLER_PORT);
 
-        // Initialize swerve requests
         this.drive = new SwerveRequest.FieldCentric()
                 .withDeadband(Constants.DRIVE_DEADBAND)
                 .withRotationalDeadband(Constants.ROTATION_DEADBAND)
@@ -53,27 +49,16 @@ public class OI {
         configureBindings();
     }
 
-    /**
-     * Configures all controller bindings.
-     */
     private void configureBindings() {
         configureDefaultCommands();
         configureDrivetrainControls();
         configureShooterControls();
-        configureSysIdControls();
         configureDriverAssist();
         configureRumbleFeedback();
-
-
-        // Register telemetry
         drivetrain.registerTelemetry(logger::telemeterize);
     }
 
-    /**
-     * Configures default commands.
-     */
     private void configureDefaultCommands() {
-        // Default manual drive
         drivetrain.setDefaultCommand(
             drivetrain.applyRequest(() ->
                 drive.withVelocityX(joystick.getLeftY() * Constants.MAX_SPEED)
@@ -82,13 +67,11 @@ public class OI {
             )
         );
 
-        // Idle while disabled
         final var idle = new SwerveRequest.Idle();
         RobotModeTriggers.disabled().whileTrue(
             drivetrain.applyRequest(() -> idle).ignoringDisable(true)
         );
 
-        // On enable: snap all wheels to forward (start) position
         RobotModeTriggers.disabled().onFalse(
             drivetrain.applyRequest(() ->
                 point.withModuleDirection(new Rotation2d(0))
@@ -96,68 +79,39 @@ public class OI {
         );
     }
 
-    /**
-     * Configures drivetrain controls.
-     */
     private void configureDrivetrainControls() {
-        // Cross = brake wheels
-        joystick.cross().whileTrue(drivetrain.applyRequest(() -> brake));
+        // LB = reset field-centric heading
+        joystick.leftBumper().onTrue(drivetrain.runOnce(drivetrain::seedFieldCentric));
 
-        // Circle (without L1) = point wheels (manual wheel direction)
-        joystick.circle().and(joystick.L1().negate()).whileTrue(drivetrain.applyRequest(() ->
-            point.withModuleDirection(new Rotation2d(-joystick.getLeftY(), -joystick.getLeftX()))
-        ));
-
-        // L1 (without circle or square) = reset field-centric heading
-        joystick.L1()
-            .onTrue(drivetrain.runOnce(drivetrain::seedFieldCentric));
+        // X = resistance mode (brake wheels while held)
+        joystick.x().whileTrue(drivetrain.applyRequest(() -> brake));
     }
 
-    /**
-     * Configures shooter controls.
-     */
     private void configureShooterControls() {
-        // R2 = shoot (auto voltage from Limelight distance)
-
-        joystick.R2().whileTrue(
-            Commands.runEnd(
-                () -> shooter.runShoot(),
-                shooter::stop,
-                shooter
-            )
-        );
-
-        // L2 = intake
-        joystick.L2().whileTrue(
+        // LT = intake
+        joystick.leftTrigger(0.5).whileTrue(
             Commands.runEnd(shooter::runIntake, shooter::stop, shooter)
         );
 
-        // L1 + Circle = unjam feeder (reverse)
-        joystick.L2().and(joystick.circle()).whileTrue(
-            Commands.runEnd(shooter::runFeedReverse, shooter::stop, shooter)
+        // RT = shooter
+        joystick.rightTrigger(0.5).whileTrue(
+            Commands.runEnd(shooter::runShoot, shooter::stop, shooter)
         );
 
-        // L1 + Square = unjam intake (reverse)
-        joystick.R2().and(joystick.circle()).whileTrue(
-            Commands.runEnd(shooter::runFeedReverse, shooter::stop, shooter)
+        // L4 (left back paddle) = inverse intake
+        triggerButton(Constants.GAMESIR_L4_BUTTON).whileTrue(
+            Commands.runEnd(shooter::runIntakeReverse, shooter::stop, shooter)
+        );
+
+        // R4 (right back paddle) = inverse shooter
+        triggerButton(Constants.GAMESIR_R4_BUTTON).whileTrue(
+            Commands.runEnd(shooter::runShootReverse, shooter::stop, shooter)
         );
     }
 
-    /**
-     * Configures System Identification (SysId) controls.
-     */
-    private void configureSysIdControls() {
-        joystick.share().and(joystick.triangle()).whileTrue(drivetrain.sysIdDynamic(Direction.kForward));
-        joystick.share().and(joystick.square()).whileTrue(drivetrain.sysIdDynamic(Direction.kReverse));
-        joystick.options().and(joystick.triangle()).whileTrue(drivetrain.sysIdQuasistatic(Direction.kForward));
-        joystick.options().and(joystick.square()).whileTrue(drivetrain.sysIdQuasistatic(Direction.kReverse));
-    }
-
-    /**
-     * Configures Limelight-based driver assist (aim assist).
-     */
     private void configureDriverAssist() {
-        joystick.R1().whileTrue(
+        // RB = driver assist (AprilTag aim)
+        joystick.rightBumper().whileTrue(
             Commands.runOnce(() -> {
                 Limelight.setPipeline(Constants.LL_AIM_PIPELINE);
                 Limelight.setLedMode(0);
@@ -165,10 +119,9 @@ public class OI {
             }).andThen(
                 drivetrain.applyRequest(() -> {
                     double vx = joystick.getLeftY() * Constants.MAX_SPEED;
-                    double vy = -joystick.getLeftX() * Constants.MAX_SPEED;
+                    double vy = joystick.getLeftX() * Constants.MAX_SPEED;
                     double omega = -joystick.getRightX() * Constants.MAX_ANGULAR_RATE;
 
-                    // Auto-aim if any alliance AprilTag is visible
                     if (driverAssist.hasAnyAllianceTarget()) {
                         double turnCmd = driverAssist.calculateAimCorrection();
                         turnCmd = MathUtil.clamp(turnCmd, -Constants.MAX_AIM_RAD_PER_SEC, Constants.MAX_AIM_RAD_PER_SEC);
@@ -183,9 +136,6 @@ public class OI {
         );
     }
 
-    /**
-     * Configures controller rumble feedback when ready to shoot.
-     */
     private void configureRumbleFeedback() {
         Trigger shotReady = new Trigger(() ->
             DriverStation.isTeleopEnabled() && driverAssist.isShotReady()
@@ -202,5 +152,10 @@ public class OI {
                 joystick.setRumble(RumbleType.kBothRumble, 0.0)
             )
         );
+    }
+
+    /** Trigger for a raw button (e.g. GameSir G7 SE back paddles L4/R4). */
+    private Trigger triggerButton(int buttonId) {
+        return new Trigger(() -> joystick.getHID().getRawButton(buttonId));
     }
 }

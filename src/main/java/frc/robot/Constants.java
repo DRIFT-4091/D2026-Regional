@@ -20,10 +20,10 @@ public final class Constants {
 
     // ---------------- CONTROLLER CONSTANTS ----------------
     public static final int CONTROLLER_PORT = 0;
-    /** GameSir G7 SE: left back paddle (L4) raw button ID; adjust if your mapping differs */
-    public static final int GAMESIR_L4_BUTTON = 5;
-    /** GameSir G7 SE: right back paddle (R4) raw button ID; adjust if your mapping differs */
-    public static final int GAMESIR_R4_BUTTON = 6;
+
+    public static final int LEFT_BUTTON = 5;
+
+    public static final int RIGHT_BUTTON = 6;
 
     // ---------------- LIMELIGHT CONSTANTS ----------------
     public static final int LL_AIM_PIPELINE = 0;
@@ -34,46 +34,38 @@ public final class Constants {
     public static final int[] RED_HUB_TAG_IDS = {18, 19, 20, 21, 24, 25, 26, 27};
 
     // ---------------- AIM ASSIST PID CONSTANTS ----------------
+    // For 10–12 ball bursts: small KI helps correct steady drift while holding on target.
     public static final double AIM_KP = 0.06;
-    public static final double AIM_KI = 0.0;
+    public static final double AIM_KI = 0.008;   // was 0; slight integral helps sustained aim during long bursts
     public static final double AIM_KD = 0.001;
     public static final double AIM_TOLERANCE = 1.0;
 
-    // ---------------- DISTANCE PID CONSTANTS ----------------
-    public static final double DISTANCE_KP = 0.6;
-    public static final double DISTANCE_KI = 0.0;
-    public static final double DISTANCE_KD = 0.0;
-    public static final double DISTANCE_TOLERANCE = 0.15;
-
-    // ---------------- ALIGNMENT THRESHOLDS ----------------
-    /** Target area at optimal shooting distance */
-    public static final double DESIRED_TA = 2.0;
-    /** Horizontal alignment tolerance (degrees) */
-    public static final double READY_TX_DEG = 1.0;
-    /** Distance tolerance (target area) */
-    public static final double READY_TA_TOL = 0.15;
     /** Max rotation speed for aim assist */
     public static final double MAX_AIM_RAD_PER_SEC = 2.5;
-    /** Max auto forward speed */
-    public static final double MAX_AUTO_FWD_MPS = 2.0;
-    /** Controller rumble intensity when ready */
-    public static final double READY_RUMBLE = 1.0;
 
-    // ---------------- SHOOTER VOLTAGE MAPPING ----------------
-    // Distance-to-voltage mapping breakpoints and interpolation
-    public static final double TA_VERY_CLOSE = 4.0;
-    public static final double TA_OPTIMAL = 2.5;
-    public static final double TA_FAR = 1.5;
-    public static final double TA_VERY_FAR = 0.75;
+    /** Shooter subsystem: TA → RPS bands and velocity PID (Kraken, rotations/sec). */
+    public static final class Shooter {
+        private Shooter() {}
 
-    public static final double VOLTAGE_VERY_CLOSE = 6.0;   // at ta = 4.0
-    public static final double VOLTAGE_OPTIMAL = 8.0;      // at ta = 2.5
-    public static final double VOLTAGE_FAR = 10.0;         // at ta = 1.5
-    public static final double VOLTAGE_VERY_FAR = 11.5;    // at ta = 0.75
-    public static final double VOLTAGE_MAX = 12.0;         // at ta < 0.75
+        // ---------------- TA → TARGET RPS (velocity control) ----------------
+        // Bands: smaller TA = farther = higher speed. Tune RPS on robot to match shot consistency.
+        /** TA >= 0.6 (0.6–0.8%): close */
+        public static final double TA_BAND_CLOSE_LO = 0.6;
+        public static final double SHOOTER_RPS_TA_06_08 = 25.0;
+        /** 0.4 <= TA < 0.6 */
+        public static final double TA_BAND_MID_HI_LO = 0.4;
+        public static final double SHOOTER_RPS_TA_04_06 = 35.0;
+        /** 0.2 <= TA < 0.4 */
+        public static final double TA_BAND_FAR_LO = 0.2;
+        public static final double SHOOTER_RPS_TA_02_04 = 45.0;
+        /** TA < 0.2: farthest */
+        public static final double SHOOTER_RPS_TA_00_02 = 55.0;
 
-    // Interpolation slopes (change in voltage per change in ta)
-    public static final double SLOPE_VERY_CLOSE_TO_OPTIMAL = 2.0 / 1.5;  // ta 4.0->2.5: 6V->8V
-    public static final double SLOPE_OPTIMAL_TO_FAR = 2.0 / 1.0;         // ta 2.5->1.5: 8V->10V
-    public static final double SLOPE_FAR_TO_VERY_FAR = 1.5 / 0.75;      // ta 1.5->0.75: 10V->11.5V
+        // ---------------- VELOCITY PID (Kraken) ----------------
+        public static final double SHOOTER_VEL_KP = 0.15;
+        public static final double SHOOTER_VEL_KI = 0.0;
+        public static final double SHOOTER_VEL_KD = 0.0;
+        public static final double SHOOTER_VEL_KV = 0.12;   // ~1 / (free speed per volt); tune to hold under load
+        public static final double SHOOTER_VEL_KS = 0.0;
+    }
 }

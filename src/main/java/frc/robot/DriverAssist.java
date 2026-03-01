@@ -4,30 +4,29 @@ import edu.wpi.first.math.controller.PIDController;
 import edu.wpi.first.wpilibj.DriverStation;
 
 /**
- * Handles driver assist features including Limelight-based aim assist
- * and shot readiness detection.
+ * Handles driver assist features including Limelight-based aim assist.
  */
 public class DriverAssist {
     private final PIDController aimPid;
-    private final PIDController distancePid;
 
     public DriverAssist() {
-        // Initialize PID controllers
         aimPid = new PIDController(Constants.AIM_KP, Constants.AIM_KI, Constants.AIM_KD);
         aimPid.setTolerance(Constants.AIM_TOLERANCE);
         aimPid.enableContinuousInput(-180, 180);
-
-        distancePid = new PIDController(Constants.DISTANCE_KP, Constants.DISTANCE_KI, Constants.DISTANCE_KD);
-        distancePid.setTolerance(Constants.DISTANCE_TOLERANCE);
+        aimPid.setIntegratorRange(-Constants.MAX_AIM_RAD_PER_SEC, Constants.MAX_AIM_RAD_PER_SEC);
     }
 
     /**
      * Gets the AprilTag IDs for the current alliance.
+     * When alliance is unknown (e.g. before match), returns both blue and red IDs so aim/shooter still work.
      */
     public int[] getAllianceTagIds() {
         var alliance = DriverStation.getAlliance();
         if (alliance.isEmpty()) {
-            return new int[0];
+            int[] both = new int[Constants.BLUE_HUB_TAG_IDS.length + Constants.RED_HUB_TAG_IDS.length];
+            System.arraycopy(Constants.BLUE_HUB_TAG_IDS, 0, both, 0, Constants.BLUE_HUB_TAG_IDS.length);
+            System.arraycopy(Constants.RED_HUB_TAG_IDS, 0, both, Constants.BLUE_HUB_TAG_IDS.length, Constants.RED_HUB_TAG_IDS.length);
+            return both;
         }
         return alliance.get() == DriverStation.Alliance.Blue
             ? Constants.BLUE_HUB_TAG_IDS
@@ -48,50 +47,25 @@ public class DriverAssist {
     }
 
     /**
-     * Checks if the robot is ready to shoot.
-     * Requirements: alliance AprilTag visible, aligned horizontally, at correct distance.
+     * Target shooter velocity (rotations per second) from Limelight TA.
+     * Used for velocity-controlled shooting so RPM is held under load.
+     * Returns 0 if no AprilTag (shooter should stop).
      */
-    public boolean isShotReady() {
-        if (!hasAnyAllianceTarget()) {
-            return false;
-        }
-
-        double tx = Limelight.tx();
-        double ta = Limelight.ta();
-
-        boolean aligned = Math.abs(tx) <= Constants.READY_TX_DEG;
-        boolean atDistance = Math.abs(ta - Constants.DESIRED_TA) <= Constants.READY_TA_TOL;
-
-        return aligned && atDistance;
-    }
-
-    /**
-     * Calculates shooter voltage based on Limelight distance to AprilTag.
-     *
-     * Uses linear interpolation between calibrated distance points:
-     * - ta >= 4.0 (very close):  6.0V
-     * - ta = 2.5 (optimal):      8.0V
-     * - ta = 1.5 (far):         10.0V
-     * - ta = 0.75 (very far):   11.5V
-     * - ta < 0.75 (max range):  12.0V
-     */
-    public double getShooterVoltageFromLimelight() {
+    public double getShooterTargetRPSFromLimelight() {
         if (!hasAnyAllianceTarget()) {
             return 0.0;
         }
 
         double ta = Limelight.ta();
 
-        if (ta >= Constants.TA_VERY_CLOSE) {
-            return Constants.VOLTAGE_VERY_CLOSE;
-        } else if (ta >= Constants.TA_OPTIMAL) {
-            return Constants.VOLTAGE_VERY_CLOSE + (Constants.TA_VERY_CLOSE - ta) * Constants.SLOPE_VERY_CLOSE_TO_OPTIMAL;
-        } else if (ta >= Constants.TA_FAR) {
-            return Constants.VOLTAGE_OPTIMAL + (Constants.TA_OPTIMAL - ta) * Constants.SLOPE_OPTIMAL_TO_FAR;
-        } else if (ta >= Constants.TA_VERY_FAR) {
-            return Constants.VOLTAGE_FAR + (Constants.TA_FAR - ta) * Constants.SLOPE_FAR_TO_VERY_FAR;
+        if (ta >= Constants.Shooter.TA_BAND_CLOSE_LO) {
+            return Constants.Shooter.SHOOTER_RPS_TA_06_08;
+        } else if (ta >= Constants.Shooter.TA_BAND_MID_HI_LO) {
+            return Constants.Shooter.SHOOTER_RPS_TA_04_06;
+        } else if (ta >= Constants.Shooter.TA_BAND_FAR_LO) {
+            return Constants.Shooter.SHOOTER_RPS_TA_02_04;
         } else {
-            return Constants.VOLTAGE_MAX;
+            return Constants.Shooter.SHOOTER_RPS_TA_00_02;
         }
     }
 
@@ -103,8 +77,8 @@ public class DriverAssist {
     }
 
     /**
-     * Calculates the aim correction based on Limelight data.
-     * @return PID-corrected rotation rate
+     * Calculates the aim correction based on Limelight data (tx = horizontal offset to target).
+     * @return Rotation rate in rad/s to drive tx toward 0
      */
     public double calculateAimCorrection() {
         double tx = Limelight.tx();
@@ -116,12 +90,5 @@ public class DriverAssist {
      */
     public PIDController getAimPid() {
         return aimPid;
-    }
-
-    /**
-     * Gets the distance PID controller (for advanced use).
-     */
-    public PIDController getDistancePid() {
-        return distancePid;
     }
 }

@@ -147,9 +147,17 @@ public class Shooter extends SubsystemBase {
 
   /**
    * Gets the current voltage being applied to the shooter motor.
-   * @return Applied voltage
+   * @return Applied voltage (V)
    */
   public double getShooterVoltage() {
     return shoot_motor.getMotorVoltage().getValueAsDouble();
+  }
+
+  /**
+   * Gets the supply (bus) voltage to the shooter motor.
+   * @return Supply voltage (V)
+   */
+  public double getShooterSupplyVoltage() {
+    return shoot_motor.getSupplyVoltage().getValueAsDouble();
   }
 }

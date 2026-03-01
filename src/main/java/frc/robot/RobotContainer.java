@@ -32,7 +32,7 @@ public class RobotContainer {
 
         // Initialize helper classes
 
-        logger = new Telemetry(Constants.MAX_SPEED);
+        logger = new Telemetry(drivetrain, shooter);
         driverAssist = new DriverAssist();
 
         // Initialize operator interface (configures all bindings)

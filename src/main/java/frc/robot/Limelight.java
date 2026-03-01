@@ -34,6 +34,11 @@ public final class Limelight {
         return table().getEntry("ta").getDouble(0.0);
     }
 
+    /** AprilTag ID of primary detected target (dimensionless). -1 if no target. */
+    public static double getTid() {
+        return table().getEntry("tid").getDouble(-1);
+    }
+
     /** Set pipeline index. */
     public static void setPipeline(int pipeline) {
         table().getEntry("pipeline").setNumber(pipeline);

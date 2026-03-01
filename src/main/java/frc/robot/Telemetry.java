@@ -1,121 +1,94 @@
 package frc.robot;
 
-import com.ctre.phoenix6.SignalLogger;
+import com.ctre.phoenix6.hardware.CANcoder;
+import com.ctre.phoenix6.hardware.TalonFX;
 import com.ctre.phoenix6.swerve.SwerveDrivetrain.SwerveDriveState;
+import com.ctre.phoenix6.swerve.SwerveModule;
 
-import edu.wpi.first.math.geometry.Pose2d;
-import edu.wpi.first.math.kinematics.ChassisSpeeds;
-import edu.wpi.first.math.kinematics.SwerveModulePosition;
-import edu.wpi.first.math.kinematics.SwerveModuleState;
-import edu.wpi.first.networktables.DoubleArrayPublisher;
 import edu.wpi.first.networktables.DoublePublisher;
 import edu.wpi.first.networktables.NetworkTable;
 import edu.wpi.first.networktables.NetworkTableInstance;
-import edu.wpi.first.networktables.StringPublisher;
-import edu.wpi.first.networktables.StructArrayPublisher;
-import edu.wpi.first.networktables.StructPublisher;
-import edu.wpi.first.wpilibj.smartdashboard.Mechanism2d;
-import edu.wpi.first.wpilibj.smartdashboard.MechanismLigament2d;
-import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
-import edu.wpi.first.wpilibj.util.Color;
-import edu.wpi.first.wpilibj.util.Color8Bit;
 
+import frc.robot.subsystems.CommandSwerveDrivetrain;
+import frc.robot.subsystems.Shooter;
+
+/**
+ * Publishes telemetry to NetworkTables in three sections: Robot, Limelight, Shooter.
+ * Units are included in the key names where applicable.
+ */
 public class Telemetry {
-    private final double MaxSpeed;
+    private final CommandSwerveDrivetrain drivetrain;
+    private final Shooter shooter;
+
+    private final NetworkTableInstance inst = NetworkTableInstance.getDefault();
+
+    /* Robot: per-module steering angle (deg), CANcoder angle (deg), drive velocity (rps), supply voltage (V) */
+    private final NetworkTable robotTable = inst.getTable("Robot");
+    private final DoublePublisher[] modSteeringAngle_deg = new DoublePublisher[4];
+    private final DoublePublisher[] modCANcoderAngle_deg = new DoublePublisher[4];
+    private final DoublePublisher[] modDriveVelocity_rps = new DoublePublisher[4];
+    private final DoublePublisher[] modSupplyVoltage_V = new DoublePublisher[4];
+
+    /* Limelight: tid (dimensionless), tx/ty (deg), ta (%) */
+    private final NetworkTable limelightTable = inst.getTable("Limelight");
+    private final DoublePublisher limelightTid = limelightTable.getDoubleTopic("tid").publish();
+    private final DoublePublisher limelightTx_deg = limelightTable.getDoubleTopic("tx_deg").publish();
+    private final DoublePublisher limelightTy_deg = limelightTable.getDoubleTopic("ty_deg").publish();
+    private final DoublePublisher limelightTa_percent = limelightTable.getDoubleTopic("ta_percent").publish();
+
+    /* Shooter: speed (RPS), supply voltage (V) */
+    private final NetworkTable shooterTable = inst.getTable("Shooter");
+    private final DoublePublisher shooterSpeed_rps = shooterTable.getDoubleTopic("Speed_rps").publish();
+    private final DoublePublisher shooterSupplyVoltage_V = shooterTable.getDoubleTopic("SupplyVoltage_V").publish();
+
+    private static final double ROTATIONS_TO_DEGREES = 360.0;
 
     /**
-     * Construct a telemetry object, with the specified max speed of the robot
-     * 
-     * @param maxSpeed Maximum speed in meters per second
+     * Constructs telemetry with references to drivetrain and shooter for publishing.
      */
-    public Telemetry(double maxSpeed) {
-        MaxSpeed = maxSpeed;
-        SignalLogger.start();
+    public Telemetry(CommandSwerveDrivetrain drivetrain, Shooter shooter) {
+        this.drivetrain = drivetrain;
+        this.shooter = shooter;
 
-        /* Set up the module state Mechanism2d telemetry */
-        for (int i = 0; i < 4; ++i) {
-            SmartDashboard.putData("Module " + i, m_moduleMechanisms[i]);
+        for (int i = 0; i < 4; i++) {
+            NetworkTable modTable = robotTable.getSubTable("Module" + i);
+            modSteeringAngle_deg[i] = modTable.getDoubleTopic("SteeringAngle_deg").publish();
+            modCANcoderAngle_deg[i] = modTable.getDoubleTopic("CANcoderAngle_deg").publish();
+            modDriveVelocity_rps[i] = modTable.getDoubleTopic("DriveVelocity_rps").publish();
+            modSupplyVoltage_V[i] = modTable.getDoubleTopic("SupplyVoltage_V").publish();
         }
     }
 
-    /* What to publish over networktables for telemetry */
-    private final NetworkTableInstance inst = NetworkTableInstance.getDefault();
-
-    /* Robot swerve drive state */
-    private final NetworkTable driveStateTable = inst.getTable("DriveState");
-    private final StructPublisher<Pose2d> drivePose = driveStateTable.getStructTopic("Pose", Pose2d.struct).publish();
-    private final StructPublisher<ChassisSpeeds> driveSpeeds = driveStateTable.getStructTopic("Speeds", ChassisSpeeds.struct).publish();
-    private final StructArrayPublisher<SwerveModuleState> driveModuleStates = driveStateTable.getStructArrayTopic("ModuleStates", SwerveModuleState.struct).publish();
-    private final StructArrayPublisher<SwerveModuleState> driveModuleTargets = driveStateTable.getStructArrayTopic("ModuleTargets", SwerveModuleState.struct).publish();
-    private final StructArrayPublisher<SwerveModulePosition> driveModulePositions = driveStateTable.getStructArrayTopic("ModulePositions", SwerveModulePosition.struct).publish();
-    private final DoublePublisher driveTimestamp = driveStateTable.getDoubleTopic("Timestamp").publish();
-    private final DoublePublisher driveOdometryFrequency = driveStateTable.getDoubleTopic("OdometryFrequency").publish();
-
-    /* Robot pose for field positioning */
-    private final NetworkTable table = inst.getTable("Pose");
-    private final DoubleArrayPublisher fieldPub = table.getDoubleArrayTopic("robotPose").publish();
-    private final StringPublisher fieldTypePub = table.getStringTopic(".type").publish();
-
-    /* Mechanisms to represent the swerve module states */
-    private final Mechanism2d[] m_moduleMechanisms = new Mechanism2d[] {
-        new Mechanism2d(1, 1),
-        new Mechanism2d(1, 1),
-        new Mechanism2d(1, 1),
-        new Mechanism2d(1, 1),
-    };
-    /* A direction and length changing ligament for speed representation */
-    private final MechanismLigament2d[] m_moduleSpeeds = new MechanismLigament2d[] {
-        m_moduleMechanisms[0].getRoot("RootSpeed", 0.5, 0.5).append(new MechanismLigament2d("Speed", 0.5, 0)),
-        m_moduleMechanisms[1].getRoot("RootSpeed", 0.5, 0.5).append(new MechanismLigament2d("Speed", 0.5, 0)),
-        m_moduleMechanisms[2].getRoot("RootSpeed", 0.5, 0.5).append(new MechanismLigament2d("Speed", 0.5, 0)),
-        m_moduleMechanisms[3].getRoot("RootSpeed", 0.5, 0.5).append(new MechanismLigament2d("Speed", 0.5, 0)),
-    };
-    /* A direction changing and length constant ligament for module direction */
-    private final MechanismLigament2d[] m_moduleDirections = new MechanismLigament2d[] {
-        m_moduleMechanisms[0].getRoot("RootDirection", 0.5, 0.5)
-            .append(new MechanismLigament2d("Direction", 0.1, 0, 0, new Color8Bit(Color.kWhite))),
-        m_moduleMechanisms[1].getRoot("RootDirection", 0.5, 0.5)
-            .append(new MechanismLigament2d("Direction", 0.1, 0, 0, new Color8Bit(Color.kWhite))),
-        m_moduleMechanisms[2].getRoot("RootDirection", 0.5, 0.5)
-            .append(new MechanismLigament2d("Direction", 0.1, 0, 0, new Color8Bit(Color.kWhite))),
-        m_moduleMechanisms[3].getRoot("RootDirection", 0.5, 0.5)
-            .append(new MechanismLigament2d("Direction", 0.1, 0, 0, new Color8Bit(Color.kWhite))),
-    };
-
-    private final double[] m_poseArray = new double[3];
-
-    /** Accept the swerve drive state and telemeterize it to SmartDashboard and SignalLogger. */
+    /**
+     * Publishes Robot, Limelight, and Shooter data to NetworkTables.
+     * Called by the drivetrain's telemetry callback (e.g. each odometry update).
+     */
     public void telemeterize(SwerveDriveState state) {
-        /* Telemeterize the swerve drive state */
-        drivePose.set(state.Pose);
-        driveSpeeds.set(state.Speeds);
-        driveModuleStates.set(state.ModuleStates);
-        driveModuleTargets.set(state.ModuleTargets);
-        driveModulePositions.set(state.ModulePositions);
-        driveTimestamp.set(state.Timestamp);
-        driveOdometryFrequency.set(1.0 / state.OdometryPeriod);
+        /* Robot: per-module data (units in key names) */
+        for (int i = 0; i < 4; i++) {
+            SwerveModule<TalonFX, TalonFX, CANcoder> mod = drivetrain.getModule(i);
+            TalonFX steer = mod.getSteerMotor();
+            TalonFX drive = mod.getDriveMotor();
+            CANcoder cancoder = mod.getEncoder();
 
-        /* Also write to log file */
-        SignalLogger.writeStruct("DriveState/Pose", Pose2d.struct, state.Pose);
-        SignalLogger.writeStruct("DriveState/Speeds", ChassisSpeeds.struct, state.Speeds);
-        SignalLogger.writeStructArray("DriveState/ModuleStates", SwerveModuleState.struct, state.ModuleStates);
-        SignalLogger.writeStructArray("DriveState/ModuleTargets", SwerveModuleState.struct, state.ModuleTargets);
-        SignalLogger.writeStructArray("DriveState/ModulePositions", SwerveModulePosition.struct, state.ModulePositions);
-        SignalLogger.writeDouble("DriveState/OdometryPeriod", state.OdometryPeriod, "seconds");
-
-        /* Telemeterize the pose to a Field2d */
-        fieldTypePub.set("Field2d");
-
-        m_poseArray[0] = state.Pose.getX();
-        m_poseArray[1] = state.Pose.getY();
-        m_poseArray[2] = state.Pose.getRotation().getDegrees();
-        fieldPub.set(m_poseArray);
-
-        /* Telemeterize each module state to a Mechanism2d */
-        for (int i = 0; i < 4; ++i) {
-            m_moduleSpeeds[i].setAngle(state.ModuleStates[i].angle);
-            m_moduleDirections[i].setAngle(state.ModuleStates[i].angle);
-            m_moduleSpeeds[i].setLength(state.ModuleStates[i].speedMetersPerSecond / (2 * MaxSpeed));
+            // Steering motor angle: rotations -> degrees
+            modSteeringAngle_deg[i].set(steer.getPosition().getValueAsDouble() * ROTATIONS_TO_DEGREES);
+            // CANcoder angle: rotations -> degrees
+            modCANcoderAngle_deg[i].set(cancoder.getAbsolutePosition().getValueAsDouble() * ROTATIONS_TO_DEGREES);
+            // Drive motor velocity: already in rot/s (RPS)
+            modDriveVelocity_rps[i].set(drive.getVelocity().getValueAsDouble());
+            // Supply voltage to the module (from drive motor, V)
+            modSupplyVoltage_V[i].set(drive.getSupplyVoltage().getValueAsDouble());
         }
+
+        /* Limelight: tid (dimensionless), tx/ty (deg), ta (0–100 %) */
+        limelightTid.set(Limelight.getTid());
+        limelightTx_deg.set(Limelight.tx());
+        limelightTy_deg.set(Limelight.ty());
+        limelightTa_percent.set(Limelight.ta());
+
+        /* Shooter: speed (RPS), supply voltage (V) */
+        shooterSpeed_rps.set(shooter.getShooterVelocity());
+        shooterSupplyVoltage_V.set(shooter.getShooterSupplyVoltage());
     }
 }

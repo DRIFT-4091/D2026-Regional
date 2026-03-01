@@ -37,13 +37,19 @@ This is an FRC robot code project built with WPILib 2026.2.1 that implements a c
 
 ## Project Structure
 
+Subsystems: **drivetrain** (swerve) and **shooter**. Add elevator, arm, climber, etc. in `subsystems/` as needed for the game.
+
 - `src/main/java/frc/robot/`
   - `Robot.java` - Main robot class with periodic methods
   - `RobotContainer.java` - Command bindings and robot configuration
   - `Limelight.java` - Limelight vision utility class
-  - `Telemetry.java` - Telemetry logging for drivetrain
+  - `MegaTag.java` - MegaTag2 vision pose integration with quality filtering
+  - `Telemetry.java` - NetworkTables telemetry (Robot, Limelight, Shooter) and MegaTag update
+  - `DriverAssist.java` - Aim assist and shooter RPS from vision (interpolated TA → RPS)
   - `subsystems/CommandSwerveDrivetrain.java` - Swerve drivetrain subsystem
+  - `subsystems/Shooter.java` - Shooter with voltage-compensated intake and optional `hasGamePiece()` for beam break
   - `generated/TunerConstants.java` - Auto-generated tuner constants
+- `src/test/java/frc/robot/` - JUnit 5 unit tests (shooter lookup, vision filter)
 
 ## Build & Deploy
 
@@ -53,12 +59,20 @@ This project uses Gradle for building and deploying:
 # Build the project
 ./gradlew build
 
+# Run unit tests
+./gradlew test
+
 # Deploy to robot
 ./gradlew deploy
 
-# Run simulation
+# Run simulation (for development and validation)
 ./gradlew simulateJava
 ```
+
+## Logging
+
+- **WPILib DataLog**: Started in `Main.java` via `DataLogManager.start()`. Logs are written to the RoboRIO or local `logs/` folder for post-match analysis.
+- **Phoenix 6 HOOT**: The CAN bus in `TunerConstants` is configured with `./logs/example.hoot`. Use CTRE SignalLogger (e.g. `SignalLogger.start()` when needed) for Phoenix 6 device replay and diagnostics.
 
 ## Dependencies
 

@@ -12,6 +12,7 @@ import edu.wpi.first.wpilibj2.command.button.Trigger;
 
 import frc.robot.subsystems.CommandSwerveDrivetrain;
 import frc.robot.subsystems.Shooter;
+import frc.robot.vision.Limelight;
 
 /**
  * Operator Interface - handles all controller bindings for GameSir G7 SE (Xbox layout).
@@ -58,8 +59,8 @@ public class OI {
     private void configureDefaultCommands() {
         drivetrain.setDefaultCommand(
             drivetrain.applyRequest(() ->
-                drive.withVelocityX(joystick.getLeftY() * Constants.MAX_SPEED)
-                    .withVelocityY(joystick.getLeftX() * Constants.MAX_SPEED)
+                drive.withVelocityX(-joystick.getLeftY() * Constants.MAX_SPEED)
+                    .withVelocityY(-joystick.getLeftX() * Constants.MAX_SPEED)
                     .withRotationalRate(-joystick.getRightX() * Constants.MAX_ANGULAR_RATE)
             )
         );
@@ -73,7 +74,7 @@ public class OI {
             Commands.runOnce(drivetrain::seedFieldCentric).andThen(
                 drivetrain.applyRequest(() ->
                     point.withModuleDirection(new Rotation2d(0))
-                ).withTimeout(0.75)
+                ).withTimeout(Constants.FIELD_CENTRIC_SEED_TIMEOUT_S)
             )
         );
     }
@@ -131,12 +132,13 @@ public class OI {
                 driverAssist.resetAimPid();
             }).andThen(
                 drivetrain.applyRequest(() -> {
-                    double vx = joystick.getLeftY() * Constants.MAX_SPEED;
-                    double vy = joystick.getLeftX() * Constants.MAX_SPEED;
+                    double vx = -joystick.getLeftY() * Constants.MAX_SPEED;
+                    double vy = -joystick.getLeftX() * Constants.MAX_SPEED;
                     double omega = -joystick.getRightX() * Constants.MAX_ANGULAR_RATE;
 
                     if (driverAssist.hasAnyAllianceTarget()) {
-                        double turnCmd = driverAssist.calculateAimCorrection();
+                        double omegaRadS = drivetrain.getRobotRelativeSpeeds().omegaRadiansPerSecond;
+                        double turnCmd = driverAssist.calculateAimCorrection(omegaRadS);
                         turnCmd = MathUtil.clamp(turnCmd, -Constants.MAX_AIM_RAD_PER_SEC, Constants.MAX_AIM_RAD_PER_SEC);
                         omega = turnCmd;
                     }

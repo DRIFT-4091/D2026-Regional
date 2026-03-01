@@ -5,19 +5,21 @@ import edu.wpi.first.wpilibj2.command.Command;
 import frc.robot.generated.TunerConstants;
 import frc.robot.subsystems.CommandSwerveDrivetrain;
 import frc.robot.subsystems.Shooter;
+import frc.robot.vision.MegaTag;
 
 /**
  * RobotContainer - Main robot configuration and initialization.
- * 
+ *
  * This class coordinates the robot's subsystems and operator interface.
  * All button bindings are configured in the OI class.
  * All constants are defined in the Constants class.
  * Driver assist features are handled by the DriverAssist class.
+ * SysId dashboard wiring is in SysIdDashboard.
  */
 public class RobotContainer {
     // Subsystems
     private final CommandSwerveDrivetrain drivetrain;
-    
+
     private final Shooter shooter;
 
     // Helper classes
@@ -31,12 +33,14 @@ public class RobotContainer {
         shooter = new Shooter();
 
         // Initialize helper classes
-
-        logger = new Telemetry(drivetrain, shooter);
+        logger = new Telemetry(drivetrain, shooter, new MegaTag(drivetrain));
         driverAssist = new DriverAssist();
 
         // Initialize operator interface (configures all bindings)
         oi = new OI(drivetrain, driverAssist, logger, shooter);
+
+        // SysId chooser and test commands on Shuffleboard
+        new SysIdDashboard(drivetrain, shooter);
     }
 
     /**

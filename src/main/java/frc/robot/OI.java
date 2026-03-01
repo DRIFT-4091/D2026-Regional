@@ -5,8 +5,6 @@ import com.ctre.phoenix6.swerve.SwerveRequest;
 
 import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.geometry.Rotation2d;
-import edu.wpi.first.wpilibj.DriverStation;
-import edu.wpi.first.wpilibj.GenericHID.RumbleType;
 import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.button.CommandXboxController;
 import edu.wpi.first.wpilibj2.command.button.RobotModeTriggers;
@@ -72,9 +70,11 @@ public class OI {
         );
 
         RobotModeTriggers.disabled().onFalse(
-            drivetrain.applyRequest(() ->
-                point.withModuleDirection(new Rotation2d(0))
-            ).withTimeout(0.75)
+            Commands.runOnce(drivetrain::seedFieldCentric).andThen(
+                drivetrain.applyRequest(() ->
+                    point.withModuleDirection(new Rotation2d(0))
+                ).withTimeout(0.75)
+            )
         );
     }
 
@@ -92,23 +92,33 @@ public class OI {
             Commands.runEnd(shooter::runIntake, shooter::stop, shooter)
         );
 
-        // RT = shooter (Limelight voltage; no run if AprilTag not seen)
-        joystick.rightTrigger().whileTrue(
+        // Shooter + feeder in one command so they don't interrupt each other. RT = wheel at RPS, Y = feeder (when target visible).
+        joystick.rightTrigger().or(joystick.y()).whileTrue(
             Commands.runEnd(
-                () -> shooter.runShoot(driverAssist.getShooterVoltageFromLimelight()),
+                () -> {
+                    double rps = driverAssist.getShooterTargetRPSFromLimelight();
+                    if (joystick.rightTrigger().getAsBoolean()) {
+                        shooter.runShoot(rps);
+                    } else {
+                        shooter.stop();
+                    }
+                    if (joystick.y().getAsBoolean() && rps > 0) {
+                        shooter.runFeed();
+                    } else {
+                        shooter.stopFeeder();
+                    }
+                },
                 shooter::stop,
                 shooter
             )
         );
 
-        // L4 (left back paddle) = inverse intake
-        triggerButton(Constants.GAMESIR_L4_BUTTON).whileTrue(
-            Commands.runEnd(shooter::runIntakeReverse, shooter::stop, shooter)
+        joystick.b().whileTrue(
+            Commands.runEnd(shooter::runFeedReverse, shooter::stop, shooter)
         );
 
-        // R4 (right back paddle) = inverse shooter
-        triggerButton(Constants.GAMESIR_R4_BUTTON).whileTrue(
-            Commands.runEnd(shooter::runShootReverse, shooter::stop, shooter)
+        joystick.a().whileTrue(
+            Commands.runEnd(shooter::runSystemReverse, shooter::stop, shooter)
         );
     }
 

@@ -93,5 +93,10 @@ public final class Constants {
         public static final double SHOOTER_VEL_KD = 0.0;
         public static final double SHOOTER_VEL_KV = 0.12;   // ~1 / (free speed per volt); tune to hold under load
         public static final double SHOOTER_VEL_KS = 0.0;
+
+        /** RPS tolerance for "at target" rumble (rotations per second). */
+        public static final double SHOOTER_RPS_RUMBLE_TOLERANCE = 2.0;
+        /** Joystick rumble strength when shooter is at target (0–1). */
+        public static final double SHOOTER_RUMBLE_STRENGTH = 0.5;
     }
 }

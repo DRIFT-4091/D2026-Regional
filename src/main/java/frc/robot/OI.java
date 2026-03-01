@@ -5,6 +5,7 @@ import com.ctre.phoenix6.swerve.SwerveRequest;
 
 import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.geometry.Rotation2d;
+import edu.wpi.first.wpilibj.GenericHID;
 import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.button.CommandXboxController;
 import edu.wpi.first.wpilibj2.command.button.RobotModeTriggers;
@@ -94,22 +95,39 @@ public class OI {
         );
 
         // Shooter + feeder in one command so they don't interrupt each other. RT = wheel at RPS, Y = feeder (when target visible).
+        // Rumble when at target RPS while holding RT (not Y); turn off rumble when Y is pressed or when command ends.
         joystick.rightTrigger().or(joystick.y()).whileTrue(
             Commands.runEnd(
                 () -> {
                     double rps = driverAssist.getShooterTargetRPSFromLimelight();
-                    if (joystick.rightTrigger().getAsBoolean()) {
+                    boolean rt = joystick.rightTrigger().getAsBoolean();
+                    boolean y = joystick.y().getAsBoolean();
+
+                    if (rt) {
                         shooter.runShoot(rps);
                     } else {
                         shooter.stop();
                     }
-                    if (joystick.y().getAsBoolean() && rps > 0) {
+                    if (y && rps > 0) {
                         shooter.runFeed();
+                        joystick.getHID().setRumble(GenericHID.RumbleType.kBothRumble, 0);
                     } else {
                         shooter.stopFeeder();
+                        // Rumble when RT only (no Y), target > 0, and shooter at target RPS
+                        if (rt && rps > 0) {
+                            double actual = shooter.getShooterVelocity();
+                            boolean atTarget = Math.abs(actual - rps) <= Constants.Shooter.SHOOTER_RPS_RUMBLE_TOLERANCE;
+                            joystick.getHID().setRumble(GenericHID.RumbleType.kBothRumble,
+                                    atTarget ? Constants.Shooter.SHOOTER_RUMBLE_STRENGTH : 0);
+                        } else {
+                            joystick.getHID().setRumble(GenericHID.RumbleType.kBothRumble, 0);
+                        }
                     }
                 },
-                shooter::stop,
+                () -> {
+                    shooter.stop();
+                    joystick.getHID().setRumble(GenericHID.RumbleType.kBothRumble, 0);
+                },
                 shooter
             )
         );

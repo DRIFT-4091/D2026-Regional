@@ -23,6 +23,7 @@ import edu.wpi.first.wpilibj.RobotController;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Subsystem;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
+import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction;
 
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
 
@@ -221,6 +222,36 @@ public class CommandSwerveDrivetrain extends TunerSwerveDrivetrain implements Su
      */
     public Command sysIdDynamic(SysIdRoutine.Direction direction) {
         return m_sysIdRoutineToApply.dynamic(direction);
+    }
+
+    /** SysId translation (drive) quasistatic. */
+    public Command sysIdTranslationQuasistatic(Direction d) {
+        return m_sysIdRoutineTranslation.quasistatic(d);
+    }
+
+    /** SysId translation (drive) dynamic. */
+    public Command sysIdTranslationDynamic(Direction d) {
+        return m_sysIdRoutineTranslation.dynamic(d);
+    }
+
+    /** SysId steer quasistatic. */
+    public Command sysIdSteerQuasistatic(Direction d) {
+        return m_sysIdRoutineSteer.quasistatic(d);
+    }
+
+    /** SysId steer dynamic. */
+    public Command sysIdSteerDynamic(Direction d) {
+        return m_sysIdRoutineSteer.dynamic(d);
+    }
+
+    /** SysId rotation quasistatic. */
+    public Command sysIdRotationQuasistatic(Direction d) {
+        return m_sysIdRoutineRotation.quasistatic(d);
+    }
+
+    /** SysId rotation dynamic. */
+    public Command sysIdRotationDynamic(Direction d) {
+        return m_sysIdRoutineRotation.dynamic(d);
     }
 
     @Override

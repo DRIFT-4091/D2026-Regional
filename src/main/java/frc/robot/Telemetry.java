@@ -11,14 +11,18 @@ import edu.wpi.first.networktables.NetworkTableInstance;
 
 import frc.robot.subsystems.CommandSwerveDrivetrain;
 import frc.robot.subsystems.Shooter;
+import frc.robot.vision.Limelight;
+import frc.robot.vision.MegaTag;
 
 /**
  * Publishes telemetry to NetworkTables in three sections: Robot, Limelight, Shooter.
+ * Also runs MegaTag2 vision pose updates (with fallback when pose is bad).
  * Units are included in the key names where applicable.
  */
 public class Telemetry {
     private final CommandSwerveDrivetrain drivetrain;
     private final Shooter shooter;
+    private final MegaTag megaTag;
 
     private final NetworkTableInstance inst = NetworkTableInstance.getDefault();
 
@@ -44,11 +48,12 @@ public class Telemetry {
     private static final double ROTATIONS_TO_DEGREES = 360.0;
 
     /**
-     * Constructs telemetry with references to drivetrain and shooter for publishing.
+     * Constructs telemetry with references to drivetrain, shooter, and MegaTag for publishing.
      */
-    public Telemetry(CommandSwerveDrivetrain drivetrain, Shooter shooter) {
+    public Telemetry(CommandSwerveDrivetrain drivetrain, Shooter shooter, MegaTag megaTag) {
         this.drivetrain = drivetrain;
         this.shooter = shooter;
+        this.megaTag = megaTag;
 
         for (int i = 0; i < 4; i++) {
             NetworkTable modTable = robotTable.getSubTable("Module" + i);
@@ -64,6 +69,9 @@ public class Telemetry {
      * Called by the drivetrain's telemetry callback (e.g. each odometry update).
      */
     public void telemeterize(SwerveDriveState state) {
+        /* MegaTag2: send robot yaw to Limelight and apply vision pose when quality is good */
+        megaTag.update();
+
         /* Robot: per-module data (units in key names) */
         for (int i = 0; i < 4; i++) {
             SwerveModule<TalonFX, TalonFX, CANcoder> mod = drivetrain.getModule(i);

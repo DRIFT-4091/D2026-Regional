@@ -5,6 +5,7 @@ import com.ctre.phoenix6.swerve.SwerveRequest;
 
 import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.geometry.Rotation2d;
+import edu.wpi.first.wpilibj.GenericHID;
 import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.button.CommandXboxController;
 import edu.wpi.first.wpilibj2.command.button.RobotModeTriggers;
@@ -12,6 +13,7 @@ import edu.wpi.first.wpilibj2.command.button.Trigger;
 
 import frc.robot.subsystems.CommandSwerveDrivetrain;
 import frc.robot.subsystems.Shooter;
+import frc.robot.vision.Limelight;
 
 /**
  * Operator Interface - handles all controller bindings for GameSir G7 SE (Xbox layout).
@@ -58,8 +60,8 @@ public class OI {
     private void configureDefaultCommands() {
         drivetrain.setDefaultCommand(
             drivetrain.applyRequest(() ->
-                drive.withVelocityX(joystick.getLeftY() * Constants.MAX_SPEED)
-                    .withVelocityY(joystick.getLeftX() * Constants.MAX_SPEED)
+                drive.withVelocityX(-joystick.getLeftY() * Constants.MAX_SPEED)
+                    .withVelocityY(-joystick.getLeftX() * Constants.MAX_SPEED)
                     .withRotationalRate(-joystick.getRightX() * Constants.MAX_ANGULAR_RATE)
             )
         );
@@ -67,14 +69,6 @@ public class OI {
         final var idle = new SwerveRequest.Idle();
         RobotModeTriggers.disabled().whileTrue(
             drivetrain.applyRequest(() -> idle).ignoringDisable(true)
-        );
-
-        RobotModeTriggers.disabled().onFalse(
-            Commands.runOnce(drivetrain::seedFieldCentric).andThen(
-                drivetrain.applyRequest(() ->
-                    point.withModuleDirection(new Rotation2d(0))
-                ).withTimeout(0.75)
-            )
         );
     }
 
@@ -93,22 +87,39 @@ public class OI {
         );
 
         // Shooter + feeder in one command so they don't interrupt each other. RT = wheel at RPS, Y = feeder (when target visible).
+        // Rumble when at target RPS while holding RT (not Y); turn off rumble when Y is pressed or when command ends.
         joystick.rightTrigger().or(joystick.y()).whileTrue(
             Commands.runEnd(
                 () -> {
                     double rps = driverAssist.getShooterTargetRPSFromLimelight();
-                    if (joystick.rightTrigger().getAsBoolean()) {
+                    boolean rt = joystick.rightTrigger().getAsBoolean();
+                    boolean y = joystick.y().getAsBoolean();
+
+                    if (rt) {
                         shooter.runShoot(rps);
                     } else {
                         shooter.stop();
                     }
-                    if (joystick.y().getAsBoolean() && rps > 0) {
+                    if (y && rps > 0) {
                         shooter.runFeed();
+                        joystick.getHID().setRumble(GenericHID.RumbleType.kBothRumble, 0);
                     } else {
                         shooter.stopFeeder();
+                        // Rumble when RT only (no Y), target > 0, and shooter at target RPS
+                        if (rt && rps > 0) {
+                            double actual = shooter.getShooterVelocity();
+                            boolean atTarget = Math.abs(actual - rps) <= Constants.Shooter.SHOOTER_RPS_RUMBLE_TOLERANCE;
+                            joystick.getHID().setRumble(GenericHID.RumbleType.kBothRumble,
+                                    atTarget ? Constants.Shooter.SHOOTER_RUMBLE_STRENGTH : 0);
+                        } else {
+                            joystick.getHID().setRumble(GenericHID.RumbleType.kBothRumble, 0);
+                        }
                     }
                 },
-                shooter::stop,
+                () -> {
+                    shooter.stop();
+                    joystick.getHID().setRumble(GenericHID.RumbleType.kBothRumble, 0);
+                },
                 shooter
             )
         );
@@ -131,12 +142,13 @@ public class OI {
                 driverAssist.resetAimPid();
             }).andThen(
                 drivetrain.applyRequest(() -> {
-                    double vx = joystick.getLeftY() * Constants.MAX_SPEED;
-                    double vy = joystick.getLeftX() * Constants.MAX_SPEED;
+                    double vx = -joystick.getLeftY() * Constants.MAX_SPEED;
+                    double vy = -joystick.getLeftX() * Constants.MAX_SPEED;
                     double omega = -joystick.getRightX() * Constants.MAX_ANGULAR_RATE;
 
                     if (driverAssist.hasAnyAllianceTarget()) {
-                        double turnCmd = driverAssist.calculateAimCorrection();
+                        double omegaRadS = drivetrain.getRobotRelativeSpeeds().omegaRadiansPerSecond;
+                        double turnCmd = driverAssist.calculateAimCorrection(omegaRadS);
                         turnCmd = MathUtil.clamp(turnCmd, -Constants.MAX_AIM_RAD_PER_SEC, Constants.MAX_AIM_RAD_PER_SEC);
                         omega = turnCmd;
                     }

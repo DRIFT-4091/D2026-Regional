@@ -3,10 +3,20 @@ package frc.robot;
 import edu.wpi.first.math.controller.PIDController;
 import edu.wpi.first.wpilibj.DriverStation;
 
+import frc.robot.vision.Limelight;
+
 /**
  * Handles driver assist features including Limelight-based aim assist.
  */
 public class DriverAssist {
+    /** Pre-computed combined tag IDs when alliance is unknown (avoids per-cycle allocation). */
+    private static final int[] BOTH_HUB_TAG_IDS;
+    static {
+        BOTH_HUB_TAG_IDS = new int[Constants.BLUE_HUB_TAG_IDS.length + Constants.RED_HUB_TAG_IDS.length];
+        System.arraycopy(Constants.BLUE_HUB_TAG_IDS, 0, BOTH_HUB_TAG_IDS, 0, Constants.BLUE_HUB_TAG_IDS.length);
+        System.arraycopy(Constants.RED_HUB_TAG_IDS, 0, BOTH_HUB_TAG_IDS, Constants.BLUE_HUB_TAG_IDS.length, Constants.RED_HUB_TAG_IDS.length);
+    }
+
     private final PIDController aimPid;
 
     public DriverAssist() {
@@ -23,10 +33,7 @@ public class DriverAssist {
     public int[] getAllianceTagIds() {
         var alliance = DriverStation.getAlliance();
         if (alliance.isEmpty()) {
-            int[] both = new int[Constants.BLUE_HUB_TAG_IDS.length + Constants.RED_HUB_TAG_IDS.length];
-            System.arraycopy(Constants.BLUE_HUB_TAG_IDS, 0, both, 0, Constants.BLUE_HUB_TAG_IDS.length);
-            System.arraycopy(Constants.RED_HUB_TAG_IDS, 0, both, Constants.BLUE_HUB_TAG_IDS.length, Constants.RED_HUB_TAG_IDS.length);
-            return both;
+            return BOTH_HUB_TAG_IDS;
         }
         return alliance.get() == DriverStation.Alliance.Blue
             ? Constants.BLUE_HUB_TAG_IDS
@@ -35,38 +42,27 @@ public class DriverAssist {
 
     /**
      * Checks if any alliance-specific AprilTag is visible.
+     * Reads tv and tid once (2 NT reads total) instead of per-tag.
      */
     public boolean hasAnyAllianceTarget() {
-        int[] targetIds = getAllianceTagIds();
-        for (int tagId : targetIds) {
-            if (Limelight.hasTarget(tagId)) {
-                return true;
-            }
+        if (!Limelight.hasTarget()) return false;
+        int tid = (int) Limelight.getTid();
+        for (int tagId : getAllianceTagIds()) {
+            if (tagId == tid) return true;
         }
         return false;
     }
 
     /**
      * Target shooter velocity (rotations per second) from Limelight TA.
-     * Used for velocity-controlled shooting so RPM is held under load.
+     * Uses continuous interpolation (InterpolatingDoubleTreeMap) for smoother shots across distance.
      * Returns 0 if no AprilTag (shooter should stop).
      */
     public double getShooterTargetRPSFromLimelight() {
         if (!hasAnyAllianceTarget()) {
             return 0.0;
         }
-
-        double ta = Limelight.ta();
-
-        if (ta >= Constants.Shooter.TA_BAND_CLOSE_LO) {
-            return Constants.Shooter.SHOOTER_RPS_TA_06_08;
-        } else if (ta >= Constants.Shooter.TA_BAND_MID_HI_LO) {
-            return Constants.Shooter.SHOOTER_RPS_TA_04_06;
-        } else if (ta >= Constants.Shooter.TA_BAND_FAR_LO) {
-            return Constants.Shooter.SHOOTER_RPS_TA_02_04;
-        } else {
-            return Constants.Shooter.SHOOTER_RPS_TA_00_02;
-        }
+        return Constants.Shooter.getShooterTargetRPSFromTA(Limelight.ta());
     }
 
     /**
@@ -78,17 +74,24 @@ public class DriverAssist {
 
     /**
      * Calculates the aim correction based on Limelight data (tx = horizontal offset to target).
+     * Uses pipeline + capture latency to predict current tx and reduce overshoot at high rotation speeds.
+     *
+     * @param omegaRadPerSec Current robot angular velocity (rad/s); use 0 if unknown
      * @return Rotation rate in rad/s to drive tx toward 0
      */
-    public double calculateAimCorrection() {
+    public double calculateAimCorrection(double omegaRadPerSec) {
         double tx = Limelight.tx();
-        return aimPid.calculate(tx, 0.0);
+        double totalLatencyMs = Limelight.tl() + Limelight.cl();
+        double omegaDegS = Math.toDegrees(omegaRadPerSec);
+        double predictedTx = tx - omegaDegS * totalLatencyMs / 1000.0;
+        return aimPid.calculate(predictedTx, 0.0);
     }
 
     /**
-     * Gets the aim PID controller (for advanced use).
+     * Calculates the aim correction without latency compensation (omega assumed 0).
+     * @return Rotation rate in rad/s to drive tx toward 0
      */
-    public PIDController getAimPid() {
-        return aimPid;
+    public double calculateAimCorrection() {
+        return calculateAimCorrection(0.0);
     }
 }

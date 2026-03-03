@@ -1,7 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "Bash(./gradlew build:*)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:firstfrc.blob.core.windows.net)"
     ]
   }
 }

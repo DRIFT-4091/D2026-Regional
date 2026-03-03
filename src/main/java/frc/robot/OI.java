@@ -70,14 +70,6 @@ public class OI {
         RobotModeTriggers.disabled().whileTrue(
             drivetrain.applyRequest(() -> idle).ignoringDisable(true)
         );
-
-        RobotModeTriggers.disabled().onFalse(
-            Commands.runOnce(drivetrain::seedFieldCentric).andThen(
-                drivetrain.applyRequest(() ->
-                    point.withModuleDirection(new Rotation2d(0))
-                ).withTimeout(Constants.FIELD_CENTRIC_SEED_TIMEOUT_S)
-            )
-        );
     }
 
     private void configureDrivetrainControls() {

@@ -45,13 +45,14 @@ public class Robot extends TimedRobot {
     public void autonomousInit() {
         // Snap wheels to forward with bevel gears inward when enabling
         Command snapWheels = m_robotContainer.getSnapWheelsAtEnableCommand();
-        m_autonomousCommand = m_robotContainer.getAutonomousCommand();
+        Command autoCommand = m_robotContainer.getAutonomousCommand();
 
-        if (m_autonomousCommand != null) {
-            CommandScheduler.getInstance().schedule(snapWheels.andThen(m_autonomousCommand));
+        if (autoCommand != null) {
+            m_autonomousCommand = snapWheels.andThen(autoCommand);
         } else {
-            CommandScheduler.getInstance().schedule(snapWheels);
+            m_autonomousCommand = snapWheels;
         }
+        CommandScheduler.getInstance().schedule(m_autonomousCommand);
     }
 
     @Override

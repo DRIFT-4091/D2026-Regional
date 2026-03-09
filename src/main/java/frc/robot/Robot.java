@@ -43,10 +43,14 @@ public class Robot extends TimedRobot {
 
     @Override
     public void autonomousInit() {
+        // Snap wheels to forward with bevel gears inward when enabling
+        Command snapWheels = m_robotContainer.getSnapWheelsAtEnableCommand();
         m_autonomousCommand = m_robotContainer.getAutonomousCommand();
 
         if (m_autonomousCommand != null) {
-            CommandScheduler.getInstance().schedule(m_autonomousCommand);
+            CommandScheduler.getInstance().schedule(snapWheels.andThen(m_autonomousCommand));
+        } else {
+            CommandScheduler.getInstance().schedule(snapWheels);
         }
     }
 
@@ -58,6 +62,8 @@ public class Robot extends TimedRobot {
 
     @Override
     public void teleopInit() {
+        // Snap wheels to forward with bevel gears inward when enabling
+        CommandScheduler.getInstance().schedule(m_robotContainer.getSnapWheelsAtEnableCommand());
         if (m_autonomousCommand != null) {
             CommandScheduler.getInstance().cancel(m_autonomousCommand);
         }
@@ -72,6 +78,8 @@ public class Robot extends TimedRobot {
     @Override
     public void testInit() {
         CommandScheduler.getInstance().cancelAll();
+        // Align wheels forward with bevel gears inward when enabling in Test
+        CommandScheduler.getInstance().schedule(m_robotContainer.getSnapWheelsAtEnableCommand());
     }
 
     @Override

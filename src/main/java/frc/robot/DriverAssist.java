@@ -41,15 +41,19 @@ public class DriverAssist {
     }
 
     /**
-     * Checks if any alliance-specific AprilTag is visible.
-     * Reads tv and tid once (2 NT reads total) instead of per-tag.
+     * Checks if any hub AprilTag (red or blue) is visible.
+     * Accepts any tag in BOTH_HUB_TAG_IDS regardless of alliance.
      */
     public boolean hasAnyAllianceTarget() {
-        if (!Limelight.hasTarget()) return false;
-        int tid = (int) Limelight.getTid();
-        for (int tagId : getAllianceTagIds()) {
+        if (!Limelight.hasTarget()) {
+            System.out.println("[DA] No target (tv=0)");
+            return false;
+        }
+        int tid = (int) Math.round(Limelight.getTid());
+        for (int tagId : BOTH_HUB_TAG_IDS) {
             if (tagId == tid) return true;
         }
+        System.out.println("[DA] tid=" + tid + " not a hub tag");
         return false;
     }
 
@@ -73,23 +77,53 @@ public class DriverAssist {
     }
 
     /**
+     * Estimates distance to target (m) from Limelight ty and mount angle.
+     * Uses geometry: (targetHeight - cameraHeight) / tan(mountAngle + ty).
+     */
+    private static double estimateDistanceToTarget(double tyDeg) {
+        double angleDeg = Constants.LL_MOUNT_ANGLE_DEG + tyDeg;
+        if (angleDeg <= 0.5 || angleDeg >= 89.5) {
+            return Constants.LL_DISTANCE_MAX_METERS;
+        }
+        double angleRad = Math.toRadians(angleDeg);
+        double d = (Constants.LL_TARGET_HEIGHT_METERS - Constants.LL_CAMERA_HEIGHT_METERS) / Math.tan(angleRad);
+        return Math.max(Constants.LL_DISTANCE_MIN_METERS, Math.min(Constants.LL_DISTANCE_MAX_METERS, d));
+    }
+
+    /**
+     * Desired tx (degrees) so that robot center (not camera) is aimed at target.
+     * Camera is offset laterally; when center is on target, camera sees target at this tx.
+     */
+    private static double getTxSetpointForCenterAim(double distanceMeters) {
+        return -Math.toDegrees(Math.atan2(Constants.LL_LATERAL_OFFSET_METERS, distanceMeters));
+    }
+
+    /**
      * Calculates the aim correction based on Limelight data (tx = horizontal offset to target).
+     * Accounts for camera mount angle (20–30°) and 4 in lateral offset so the robot center aligns.
      * Uses pipeline + capture latency to predict current tx and reduce overshoot at high rotation speeds.
      *
      * @param omegaRadPerSec Current robot angular velocity (rad/s); use 0 if unknown
-     * @return Rotation rate in rad/s to drive tx toward 0
+     * @return Rotation rate in rad/s to drive tx toward the center-aim setpoint
      */
     public double calculateAimCorrection(double omegaRadPerSec) {
+        if (!hasAnyAllianceTarget()) {
+            aimPid.reset();
+            return 0.0;
+        }
         double tx = Limelight.tx();
+        double ty = Limelight.ty();
         double totalLatencyMs = Limelight.tl() + Limelight.cl();
         double omegaDegS = Math.toDegrees(omegaRadPerSec);
         double predictedTx = tx - omegaDegS * totalLatencyMs / 1000.0;
-        return aimPid.calculate(predictedTx, 0.0);
+
+        double distanceM = estimateDistanceToTarget(ty);
+        double setpoint = getTxSetpointForCenterAim(distanceM);
+        return aimPid.calculate(predictedTx, setpoint);
     }
 
     /**
      * Calculates the aim correction without latency compensation (omega assumed 0).
-     * @return Rotation rate in rad/s to drive tx toward 0
      */
     public double calculateAimCorrection() {
         return calculateAimCorrection(0.0);

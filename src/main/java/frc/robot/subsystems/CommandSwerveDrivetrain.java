@@ -7,7 +7,11 @@ import java.util.function.Supplier;
 
 import com.ctre.phoenix6.SignalLogger;
 import com.ctre.phoenix6.Utils;
+import com.ctre.phoenix6.controls.PositionVoltage;
+import com.ctre.phoenix6.controls.VoltageOut;
+import com.ctre.phoenix6.swerve.SwerveDrivetrain;
 import com.ctre.phoenix6.swerve.SwerveDrivetrainConstants;
+import com.ctre.phoenix6.swerve.SwerveModule;
 import com.ctre.phoenix6.swerve.SwerveModuleConstants;
 import com.ctre.phoenix6.swerve.SwerveRequest;
 
@@ -21,12 +25,18 @@ import edu.wpi.first.wpilibj.DriverStation.Alliance;
 import edu.wpi.first.wpilibj.Notifier;
 import edu.wpi.first.wpilibj.RobotController;
 import edu.wpi.first.wpilibj2.command.Command;
+import edu.wpi.first.wpilibj2.command.Commands;
+import edu.wpi.first.wpilibj2.command.SequentialCommandGroup;
 import edu.wpi.first.wpilibj2.command.Subsystem;
+
+import frc.robot.Constants;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction;
 
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
 
+
+import com.ctre.phoenix6.StatusCode;
 
 import frc.robot.generated.TunerConstants.TunerSwerveDrivetrain;
 
@@ -200,6 +210,78 @@ public class CommandSwerveDrivetrain extends TunerSwerveDrivetrain implements Su
      */
     public Command applyRequest(Supplier<SwerveRequest> request) {
         return run(() -> this.setControl(request.get()));
+    }
+
+    /**
+     * Request that points all wheels forward with steer angle constrained so bevel gears
+     * always face inward (no 180° flip). Use for idle and snap-to-forward.
+     */
+    public static SwerveRequest pointWheelsForwardBevelIn(Rotation2d forwardDirection) {
+        return new PointWheelsForwardBevelIn(forwardDirection);
+    }
+
+    /**
+     * Points wheels at the given direction but constrains each module's steer angle to the
+     * semicircle [0, BEVEL_IN_SEMICIRCLE_MAX_ROTATIONS) so bevel gears face inward.
+     */
+    private static final class PointWheelsForwardBevelIn implements SwerveRequest {
+        private final Rotation2d moduleDirection;
+
+        PointWheelsForwardBevelIn(Rotation2d moduleDirection) {
+            this.moduleDirection = moduleDirection;
+        }
+
+        @Override
+        public StatusCode apply(
+                SwerveDrivetrain.SwerveControlParameters parameters,
+                SwerveModule... modulesToApply) {
+            double fieldAngleRad = moduleDirection.getRadians();
+            double fieldAngleRot = (fieldAngleRad / (2.0 * Math.PI)) % 1.0;
+            if (fieldAngleRot < 0) fieldAngleRot += 1.0;
+            double maxRot = Constants.BEVEL_IN_SEMICIRCLE_MAX_ROTATIONS;
+            int[] otherSemicircleModules = Constants.BEVEL_IN_OTHER_SEMICIRCLE_MODULES;
+            VoltageOut driveReq = new VoltageOut(0.0);
+            for (int i = 0; i < modulesToApply.length; i++) {
+                boolean useOtherSemicircle = false;
+                for (int j : otherSemicircleModules) {
+                    if (j == i) { useOtherSemicircle = true; break; }
+                }
+                double targetRot;
+                if (useOtherSemicircle) {
+                    // Bevel in on [0.5, 1.0) for this module (e.g. Back Right)
+                    targetRot = fieldAngleRot >= 0.5 ? fieldAngleRot : fieldAngleRot + 0.5;
+                } else {
+                    // Bevel in on [0, 0.5)
+                    targetRot = maxRot > 0 && fieldAngleRot >= maxRot ? fieldAngleRot - maxRot : fieldAngleRot;
+                    if (maxRot <= 0) {
+                        targetRot = 0.5 + (fieldAngleRot % 0.5);
+                        if (targetRot >= 1.0) targetRot -= 1.0;
+                    }
+                }
+                modulesToApply[i].apply(driveReq, new PositionVoltage(targetRot));
+            }
+            return StatusCode.OK;
+        }
+    }
+
+    /**
+     * Command that points all wheels along the robot forward direction (aligned with chassis),
+     * then seeds field-centric so "forward" on the stick matches the robot. Requires the
+     * drivetrain so the default drive does not run during the snap.
+     * Uses bevel-in constraint so gears always face inward.
+     */
+    public Command snapWheelsToForwardCommand() {
+        final Rotation2d[] targetDirection = new Rotation2d[1];
+        Command captureAndSnap = Commands.run(
+                () -> setControl(pointWheelsForwardBevelIn(targetDirection[0])),
+                this)
+            .withTimeout(Constants.FIELD_CENTRIC_SEED_TIMEOUT_S);
+        return new SequentialCommandGroup(
+            Commands.runOnce(() -> targetDirection[0] = getPose().getRotation()
+                .plus(Rotation2d.fromDegrees(Constants.WHEEL_FORWARD_OFFSET_DEG))),
+            captureAndSnap,
+            Commands.runOnce(() -> seedFieldCentric()))
+            .withName("SnapWheelsToForward");
     }
 
     /**

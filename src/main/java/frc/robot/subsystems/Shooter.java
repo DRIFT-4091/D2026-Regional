@@ -34,7 +34,7 @@ public class Shooter extends SubsystemBase {
   private static final int KRAKEN_ID = 13;   // Bottom intake / feeder roller
 
   /** Nominal voltages at 12 V; scaled by battery/12 for consistent behavior when sagged. */
-  private static final double FEED_VOLTAGE_NOMINAL = 7.0;
+  private static final double FEED_VOLTAGE_NOMINAL = 9.0;
   private static final double SHOOT_VOLTAGE_NOMINAL = 9.0;
 
   /** Nominal bus voltage for scaling (V). */

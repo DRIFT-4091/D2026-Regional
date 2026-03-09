@@ -33,8 +33,8 @@ public class RobotContainer {
         shooter = new Shooter();
 
         // Initialize helper classes
-        logger = new Telemetry(drivetrain, shooter, new MegaTag(drivetrain));
         driverAssist = new DriverAssist();
+        logger = new Telemetry(drivetrain, new MegaTag(drivetrain), driverAssist);
 
         // Initialize operator interface (configures all bindings)
         oi = new OI(drivetrain, driverAssist, logger, shooter);
@@ -48,5 +48,13 @@ public class RobotContainer {
      */
     public Command getAutonomousCommand() {
         return null;
+    }
+
+    /**
+     * Returns a command that snaps the drivetrain wheels to forward with bevel gears facing
+     * inward. Scheduled when the robot is enabled (teleop, auto, test) so wheels align on enable.
+     */
+    public Command getSnapWheelsAtEnableCommand() {
+        return drivetrain.snapWheelsToForwardCommand();
     }
 }

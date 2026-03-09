@@ -4,8 +4,8 @@ import com.ctre.phoenix6.swerve.SwerveModule.DriveRequestType;
 import com.ctre.phoenix6.swerve.SwerveRequest;
 
 import edu.wpi.first.math.MathUtil;
-import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.wpilibj.GenericHID;
+import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.button.CommandXboxController;
 import edu.wpi.first.wpilibj2.command.button.RobotModeTriggers;
@@ -16,35 +16,36 @@ import frc.robot.subsystems.Shooter;
 import frc.robot.vision.Limelight;
 
 /**
- * Operator Interface - handles all controller bindings for GameSir G7 SE (Xbox layout).
- * Left stick: strafe + forward/back. Right stick: rotation.
- * LT=intake, RT=shooter, LB=reset field, RB=driver assist, R4=inverse shooter, L4=inverse intake, X=resistance.
+ * Operator Interface - two GameSir G7 controllers (Xbox layout).
+ * Driver   (port 0): movement, reset heading, auto-align, basket wobble. Rumbles during wobble.
+ * Operator (port 1): intake, shooter, feeder. Rumbles when auto-aligning and shooter is at target.
  */
 public class OI {
-    private final CommandXboxController joystick;
+    private final CommandXboxController driverJoystick;
+    private final CommandXboxController operatorJoystick;
     private final CommandSwerveDrivetrain drivetrain;
     private final Shooter shooter;
     private final DriverAssist driverAssist;
     private final Telemetry logger;
 
     private final SwerveRequest.FieldCentric drive;
-    private final SwerveRequest.SwerveDriveBrake brake;
-    private final SwerveRequest.PointWheelsAt point;
+    private final SwerveRequest.FieldCentric wobbleDrive;
 
     public OI(CommandSwerveDrivetrain drivetrain, DriverAssist driverAssist, Telemetry logger, Shooter shooter) {
         this.drivetrain = drivetrain;
         this.shooter = shooter;
         this.driverAssist = driverAssist;
         this.logger = logger;
-        this.joystick = new CommandXboxController(Constants.CONTROLLER_PORT);
+        this.driverJoystick = new CommandXboxController(Constants.DRIVER_CONTROLLER_PORT);
+        this.operatorJoystick = new CommandXboxController(Constants.OPERATOR_CONTROLLER_PORT);
 
         this.drive = new SwerveRequest.FieldCentric()
                 .withDeadband(Constants.DRIVE_DEADBAND)
                 .withRotationalDeadband(Constants.ROTATION_DEADBAND)
                 .withDriveRequestType(DriveRequestType.OpenLoopVoltage);
 
-        this.brake = new SwerveRequest.SwerveDriveBrake();
-        this.point = new SwerveRequest.PointWheelsAt();
+        this.wobbleDrive = new SwerveRequest.FieldCentric()
+                .withDriveRequestType(DriveRequestType.OpenLoopVoltage);
 
         configureBindings();
     }
@@ -59,11 +60,15 @@ public class OI {
 
     private void configureDefaultCommands() {
         drivetrain.setDefaultCommand(
-            drivetrain.applyRequest(() ->
-                drive.withVelocityX(-joystick.getLeftY() * Constants.MAX_SPEED)
-                    .withVelocityY(-joystick.getLeftX() * Constants.MAX_SPEED)
-                    .withRotationalRate(-joystick.getRightX() * Constants.MAX_ANGULAR_RATE)
-            )
+            drivetrain.applyRequest(() -> {
+                double leftY = MathUtil.applyDeadband(-driverJoystick.getLeftY(), Constants.JOYSTICK_DEADBAND);
+                double leftX = MathUtil.applyDeadband(-driverJoystick.getLeftX(), Constants.JOYSTICK_DEADBAND);
+                double rightX = MathUtil.applyDeadband(-driverJoystick.getHID().getRawAxis(Constants.ROTATION_AXIS), Constants.JOYSTICK_DEADBAND);
+                double vx = leftY * Constants.MAX_SPEED;
+                double vy = leftX * Constants.MAX_SPEED;
+                double omega = rightX * Constants.MAX_ANGULAR_RATE;
+                return drive.withVelocityX(-vx).withVelocityY(-vy).withRotationalRate(-omega);
+            })
         );
 
         final var idle = new SwerveRequest.Idle();
@@ -74,95 +79,100 @@ public class OI {
 
     private void configureDrivetrainControls() {
         // LB = reset field-centric heading
-        triggerButton(Constants.LEFT_BUTTON).onTrue(drivetrain.runOnce(drivetrain::seedFieldCentric));
+        triggerDriverButton(Constants.LEFT_BUTTON).onTrue(drivetrain.runOnce(drivetrain::seedFieldCentric));
 
-        // X = resistance mode (brake wheels while held)
-        joystick.x().whileTrue(drivetrain.applyRequest(() -> brake));
+        // X = basket wobble + driver joystick rumbles
+        driverJoystick.x().whileTrue(
+            Commands.startEnd(
+                () -> driverJoystick.getHID().setRumble(GenericHID.RumbleType.kBothRumble, Constants.Shooter.SHOOTER_RUMBLE_STRENGTH),
+                () -> driverJoystick.getHID().setRumble(GenericHID.RumbleType.kBothRumble, 0)
+            ).alongWith(drivetrain.applyRequest(() -> {
+                double t = Timer.getFPGATimestamp();
+                double vx = Constants.WOBBLE_SPEED_MPS * Math.sin(2 * Math.PI * Constants.WOBBLE_HZ * t);
+                return wobbleDrive.withVelocityX(vx).withVelocityY(0).withRotationalRate(0);
+            }))
+        );
     }
 
     private void configureShooterControls() {
         // LT = intake
-        joystick.leftTrigger().whileTrue(
+        operatorJoystick.leftTrigger().whileTrue(
             Commands.runEnd(shooter::runIntake, shooter::stop, shooter)
         );
 
-        // Shooter + feeder in one command so they don't interrupt each other. RT = wheel at RPS, Y = feeder (when target visible).
-        // Rumble when at target RPS while holding RT (not Y); turn off rumble when Y is pressed or when command ends.
-        joystick.rightTrigger().or(joystick.y()).whileTrue(
+        // RT = shoot wheel, Y = feeder (when target visible).
+        // Operator joystick rumbles when auto-aligning (driver RB) and shooter is at target RPS.
+        operatorJoystick.rightTrigger().or(operatorJoystick.y()).whileTrue(
             Commands.runEnd(
                 () -> {
-                    double rps = driverAssist.getShooterTargetRPSFromLimelight();
-                    boolean rt = joystick.rightTrigger().getAsBoolean();
-                    boolean y = joystick.y().getAsBoolean();
-
+                    double limelightRps = driverAssist.getShooterTargetRPSFromLimelight();
+                    double targetRps = limelightRps > 0 ? limelightRps : Constants.Shooter.SHOOTER_DEFAULT_RPS;
+                    boolean rt = operatorJoystick.rightTrigger().getAsBoolean();
+                    boolean y = operatorJoystick.y().getAsBoolean();
                     if (rt) {
-                        shooter.runShoot(rps);
+                        shooter.runShoot(targetRps);
                     } else {
                         shooter.stop();
                     }
-                    if (y && rps > 0) {
+                    if (y && limelightRps > 0) {
                         shooter.runFeed();
-                        joystick.getHID().setRumble(GenericHID.RumbleType.kBothRumble, 0);
+                        operatorJoystick.getHID().setRumble(GenericHID.RumbleType.kBothRumble, 0);
                     } else {
                         shooter.stopFeeder();
-                        // Rumble when RT only (no Y), target > 0, and shooter at target RPS
-                        if (rt && rps > 0) {
+                        if (rt) {
                             double actual = shooter.getShooterVelocity();
-                            boolean atTarget = Math.abs(actual - rps) <= Constants.Shooter.SHOOTER_RPS_RUMBLE_TOLERANCE;
-                            joystick.getHID().setRumble(GenericHID.RumbleType.kBothRumble,
+                            boolean atTarget = Math.abs(actual - targetRps) <= Constants.Shooter.SHOOTER_RPS_RUMBLE_TOLERANCE;
+                            operatorJoystick.getHID().setRumble(GenericHID.RumbleType.kBothRumble,
                                     atTarget ? Constants.Shooter.SHOOTER_RUMBLE_STRENGTH : 0);
                         } else {
-                            joystick.getHID().setRumble(GenericHID.RumbleType.kBothRumble, 0);
+                            operatorJoystick.getHID().setRumble(GenericHID.RumbleType.kBothRumble, 0);
                         }
                     }
                 },
                 () -> {
                     shooter.stop();
-                    joystick.getHID().setRumble(GenericHID.RumbleType.kBothRumble, 0);
+                    operatorJoystick.getHID().setRumble(GenericHID.RumbleType.kBothRumble, 0);
                 },
                 shooter
             )
         );
 
-        joystick.b().whileTrue(
+        operatorJoystick.b().whileTrue(
             Commands.runEnd(shooter::runFeedReverse, shooter::stop, shooter)
         );
 
-        joystick.a().whileTrue(
+        operatorJoystick.a().whileTrue(
             Commands.runEnd(shooter::runSystemReverse, shooter::stop, shooter)
         );
     }
 
     private void configureDriverAssist() {
         // RB = driver assist (AprilTag aim)
-        triggerButton(Constants.RIGHT_BUTTON).whileTrue(
+        triggerDriverButton(Constants.RIGHT_BUTTON).whileTrue(
             Commands.runOnce(() -> {
                 Limelight.setPipeline(Constants.LL_AIM_PIPELINE);
                 Limelight.setLedMode(0);
                 driverAssist.resetAimPid();
             }).andThen(
                 drivetrain.applyRequest(() -> {
-                    double vx = -joystick.getLeftY() * Constants.MAX_SPEED;
-                    double vy = -joystick.getLeftX() * Constants.MAX_SPEED;
-                    double omega = -joystick.getRightX() * Constants.MAX_ANGULAR_RATE;
-
-                    if (driverAssist.hasAnyAllianceTarget()) {
-                        double omegaRadS = drivetrain.getRobotRelativeSpeeds().omegaRadiansPerSecond;
-                        double turnCmd = driverAssist.calculateAimCorrection(omegaRadS);
-                        turnCmd = MathUtil.clamp(turnCmd, -Constants.MAX_AIM_RAD_PER_SEC, Constants.MAX_AIM_RAD_PER_SEC);
-                        omega = turnCmd;
-                    }
+                    double leftY = MathUtil.applyDeadband(driverJoystick.getLeftY(), Constants.JOYSTICK_DEADBAND);
+                    double leftX = MathUtil.applyDeadband(-driverJoystick.getLeftX(), Constants.JOYSTICK_DEADBAND);
+                    double vx = leftY * Constants.MAX_SPEED;
+                    double vy = leftX * Constants.MAX_SPEED;
+                    double omegaRadS = drivetrain.getRobotRelativeSpeeds().omegaRadiansPerSecond;
+                    double turnCmd = driverAssist.calculateAimCorrection(omegaRadS);
+                    turnCmd = MathUtil.clamp(turnCmd, -Constants.MAX_AIM_RAD_PER_SEC, Constants.MAX_AIM_RAD_PER_SEC);
 
                     return drive.withVelocityX(vx)
                                 .withVelocityY(vy)
-                                .withRotationalRate(omega);
+                                .withRotationalRate(-turnCmd);
                 })
             )
         );
     }
 
-    /** Trigger for a raw button (e.g. GameSir back paddles, LB/RB if mapped as raw). */
-    private Trigger triggerButton(int buttonId) {
-        return new Trigger(() -> joystick.getHID().getRawButton(buttonId));
+    /** Trigger for a raw button on the driver controller. */
+    private Trigger triggerDriverButton(int buttonId) {
+        return new Trigger(() -> driverJoystick.getHID().getRawButton(buttonId));
     }
 }

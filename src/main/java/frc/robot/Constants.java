@@ -98,8 +98,14 @@ public final class Constants {
 
     // ---------------- APRILTAG CONSTANTS ----------------
     // REBUILT FRC Challenge AprilTag IDs
-    public static final int[] BLUE_HUB_TAG_IDS = {2, 3, 4, 5, 8, 7, 9, 10, 11}; // 7 is not a hub tag
+    public static final int[] BLUE_HUB_TAG_IDS = {2, 3, 4, 5, 8, 9, 10, 11}; // tag 7 is a TRENCH tag, not a hub tag
     public static final int[] RED_HUB_TAG_IDS = {18, 19, 20, 21, 24, 25, 26, 27};
+
+    // Human player station (CORRAL) AprilTag IDs — verified from 2026-rebuilt-andymark.json (WPILib)
+    // Blue CORRAL: tags 29-32 are at X≈0.01 m (blue alliance wall)
+    // Red  CORRAL: tags 13-16 are at X≈16.50 m (red alliance wall)
+    public static final int[] BLUE_HUMAN_PLAYER_TAG_IDS = {29, 30, 31, 32};
+    public static final int[] RED_HUMAN_PLAYER_TAG_IDS  = {13, 14, 15, 16};
 
     // ---------------- AIM ASSIST PID CONSTANTS ----------------
     // For 10–12 ball bursts: small KI helps correct steady drift while holding on target.

@@ -5,10 +5,12 @@ import com.ctre.phoenix6.hardware.TalonFX;
 import com.ctre.phoenix6.swerve.SwerveDrivetrain.SwerveDriveState;
 import com.ctre.phoenix6.swerve.SwerveModule;
 
+import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.networktables.BooleanPublisher;
 import edu.wpi.first.networktables.DoublePublisher;
 import edu.wpi.first.networktables.NetworkTable;
 import edu.wpi.first.networktables.NetworkTableInstance;
+import edu.wpi.first.networktables.StructPublisher;
 
 import frc.robot.subsystems.CommandSwerveDrivetrain;
 import frc.robot.vision.Limelight;
@@ -41,6 +43,10 @@ public class Telemetry {
     private double prevVx = 0.0;
     private double prevVy = 0.0;
     private double prevTimestamp = -1.0;
+
+    /* Robot pose for AdvantageScope field view */
+    private final StructPublisher<Pose2d> robotPose =
+            robotTable.getStructTopic("Pose", Pose2d.struct).publish();
 
     /* Limelight: tid (dimensionless), tx/ty (deg), ta (%), hasAnyAllianceTarget */
     private final NetworkTable limelightTable = inst.getTable("Limelight");
@@ -116,6 +122,9 @@ public class Telemetry {
         prevVx = vx;
         prevVy = vy;
         prevTimestamp = t;
+
+        /* Robot pose (for AdvantageScope field view) */
+        robotPose.set(state.Pose);
 
         /* Limelight: tid (dimensionless), tx/ty (deg), ta (0–100 %), hasAllianceTarget */
         limelightTid.set(Limelight.getTid());

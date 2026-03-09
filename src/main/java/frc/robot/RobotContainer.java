@@ -5,7 +5,11 @@ import com.pathplanner.lib.controllers.PPHolonomicDriveController;
 import com.pathplanner.lib.config.RobotConfig;
 import com.pathplanner.lib.config.PIDConstants;
 
+import edu.wpi.first.cscore.UsbCamera;
+import edu.wpi.first.cameraserver.CameraServer;
 import edu.wpi.first.wpilibj.DriverStation;
+import edu.wpi.first.wpilibj.smartdashboard.SendableChooser;
+import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
 import frc.robot.generated.TunerConstants;
 import frc.robot.subsystems.CommandSwerveDrivetrain;
@@ -31,6 +35,7 @@ public class RobotContainer {
     private final DriverAssist driverAssist;
     private final Telemetry logger;
     private final OI oi;
+    private final SendableChooser<Command> autoChooser;
 
     public RobotContainer() {
         // Initialize subsystems
@@ -41,14 +46,25 @@ public class RobotContainer {
         driverAssist = new DriverAssist();
         logger = new Telemetry(drivetrain, new MegaTag(drivetrain), driverAssist);
 
-        // Configure PathPlanner auto
+        // Configure PathPlanner auto (must run before building chooser)
         configurePathPlanner();
+
+        // Build auto chooser from all .auto files, then add vision-based routines
+        autoChooser = AutoBuilder.buildAutoChooser();
+        autoChooser.addOption("Hub Score", Autos.scoreAtHub(drivetrain, shooter, driverAssist));
+        autoChooser.addOption("Hub Score + Return", Autos.scoreAndReturn(drivetrain, shooter, driverAssist));
+        SmartDashboard.putData("Auto Chooser", autoChooser);
 
         // Initialize operator interface (configures all bindings)
         oi = new OI(drivetrain, driverAssist, logger, shooter);
 
         // SysId chooser and test commands on Shuffleboard
         new SysIdDashboard(drivetrain, shooter);
+
+        // LifeCam stream - Elastic auto-discovers CameraServer streams
+        UsbCamera camera = CameraServer.startAutomaticCapture(0);
+        camera.setResolution(320, 240);
+        camera.setFPS(30);
     }
 
     /**
@@ -67,7 +83,7 @@ public class RobotContainer {
             drivetrain::getPose,
             drivetrain::resetPose,
             drivetrain::getRobotRelativeSpeeds,
-            drivetrain::driveRobotRelative,
+            (speeds, feedforwards) -> drivetrain.driveRobotRelative(speeds, feedforwards),
 
             new PPHolonomicDriveController(
                 new PIDConstants(5.0, 0.0, 0.0), // Translation PID
@@ -87,7 +103,7 @@ public class RobotContainer {
      * Returns the autonomous command to run, or null if none.
      */
     public Command getAutonomousCommand() {
-        return AutoBuilder.buildAuto("NewAuto");
+        return autoChooser.getSelected();
     }
 
     /**

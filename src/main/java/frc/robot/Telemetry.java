@@ -5,24 +5,24 @@ import com.ctre.phoenix6.hardware.TalonFX;
 import com.ctre.phoenix6.swerve.SwerveDrivetrain.SwerveDriveState;
 import com.ctre.phoenix6.swerve.SwerveModule;
 
+import edu.wpi.first.networktables.BooleanPublisher;
 import edu.wpi.first.networktables.DoublePublisher;
 import edu.wpi.first.networktables.NetworkTable;
 import edu.wpi.first.networktables.NetworkTableInstance;
 
 import frc.robot.subsystems.CommandSwerveDrivetrain;
-import frc.robot.subsystems.Shooter;
 import frc.robot.vision.Limelight;
 import frc.robot.vision.MegaTag;
 
 /**
- * Publishes telemetry to NetworkTables in three sections: Robot, Limelight, Shooter.
+ * Publishes telemetry to NetworkTables: Robot (per-module data) and Limelight.
  * Also runs MegaTag2 vision pose updates (with fallback when pose is bad).
- * Units are included in the key names where applicable.
+ * SysId widgets are in SysIdDashboard. Units are in the key names where applicable.
  */
 public class Telemetry {
     private final CommandSwerveDrivetrain drivetrain;
-    private final Shooter shooter;
     private final MegaTag megaTag;
+    private final DriverAssist driverAssist;
 
     private final NetworkTableInstance inst = NetworkTableInstance.getDefault();
 
@@ -33,27 +33,37 @@ public class Telemetry {
     private final DoublePublisher[] modDriveVelocity_rps = new DoublePublisher[4];
     private final DoublePublisher[] modSupplyVoltage_V = new DoublePublisher[4];
 
-    /* Limelight: tid (dimensionless), tx/ty (deg), ta (%) */
+    /* Robot: acceleration (m/s²) derived from successive ChassisSpeeds */
+    private final DoublePublisher accelX_mps2 = robotTable.getDoubleTopic("AccelX_mps2").publish();
+    private final DoublePublisher accelY_mps2 = robotTable.getDoubleTopic("AccelY_mps2").publish();
+    private final DoublePublisher accelMag_mps2 = robotTable.getDoubleTopic("AccelMag_mps2").publish();
+
+    private double prevVx = 0.0;
+    private double prevVy = 0.0;
+    private double prevTimestamp = -1.0;
+
+    /* Limelight: tid (dimensionless), tx/ty (deg), ta (%), hasAnyAllianceTarget */
     private final NetworkTable limelightTable = inst.getTable("Limelight");
     private final DoublePublisher limelightTid = limelightTable.getDoubleTopic("tid").publish();
     private final DoublePublisher limelightTx_deg = limelightTable.getDoubleTopic("tx_deg").publish();
     private final DoublePublisher limelightTy_deg = limelightTable.getDoubleTopic("ty_deg").publish();
     private final DoublePublisher limelightTa_percent = limelightTable.getDoubleTopic("ta_percent").publish();
-
-    /* Shooter: speed (RPS), supply voltage (V) */
-    private final NetworkTable shooterTable = inst.getTable("Shooter");
-    private final DoublePublisher shooterSpeed_rps = shooterTable.getDoubleTopic("Speed_rps").publish();
-    private final DoublePublisher shooterSupplyVoltage_V = shooterTable.getDoubleTopic("SupplyVoltage_V").publish();
+    private final BooleanPublisher limelightHasAllianceTarget = limelightTable.getBooleanTopic("hasAllianceTarget").publish();
 
     private static final double ROTATIONS_TO_DEGREES = 360.0;
 
+    /** Returns angle in degrees wrapped to [0, 360). */
+    private static double mod360(double degrees) {
+        return ((degrees % 360.0) + 360.0) % 360.0;
+    }
+
     /**
-     * Constructs telemetry with references to drivetrain, shooter, and MegaTag for publishing.
+     * Constructs telemetry with references to drivetrain and MegaTag (vision updates).
      */
-    public Telemetry(CommandSwerveDrivetrain drivetrain, Shooter shooter, MegaTag megaTag) {
+    public Telemetry(CommandSwerveDrivetrain drivetrain, MegaTag megaTag, DriverAssist driverAssist) {
         this.drivetrain = drivetrain;
-        this.shooter = shooter;
         this.megaTag = megaTag;
+        this.driverAssist = driverAssist;
 
         for (int i = 0; i < 4; i++) {
             NetworkTable modTable = robotTable.getSubTable("Module" + i);
@@ -65,7 +75,7 @@ public class Telemetry {
     }
 
     /**
-     * Publishes Robot, Limelight, and Shooter data to NetworkTables.
+     * Publishes Robot (module) and Limelight data to NetworkTables and runs MegaTag2 vision updates.
      * Called by the drivetrain's telemetry callback (e.g. each odometry update).
      */
     public void telemeterize(SwerveDriveState state) {
@@ -79,24 +89,39 @@ public class Telemetry {
             TalonFX drive = mod.getDriveMotor();
             CANcoder cancoder = mod.getEncoder();
 
-            // Steering motor angle: rotations -> degrees
-            modSteeringAngle_deg[i].set(steer.getPosition().getValueAsDouble() * ROTATIONS_TO_DEGREES);
-            // CANcoder angle: rotations -> degrees
-            modCANcoderAngle_deg[i].set(cancoder.getAbsolutePosition().getValueAsDouble() * ROTATIONS_TO_DEGREES);
+            // Steering motor angle: rotations -> degrees, mod 360 for Shuffleboard
+            modSteeringAngle_deg[i].set(mod360(steer.getPosition().getValueAsDouble() * ROTATIONS_TO_DEGREES));
+            // CANcoder angle: rotations -> degrees, mod 360 for Shuffleboard
+            modCANcoderAngle_deg[i].set(mod360(cancoder.getAbsolutePosition().getValueAsDouble() * ROTATIONS_TO_DEGREES));
             // Drive motor velocity: already in rot/s (RPS)
             modDriveVelocity_rps[i].set(drive.getVelocity().getValueAsDouble());
             // Supply voltage to the module (from drive motor, V)
             modSupplyVoltage_V[i].set(drive.getSupplyVoltage().getValueAsDouble());
         }
 
-        /* Limelight: tid (dimensionless), tx/ty (deg), ta (0–100 %) */
+        /* Robot: acceleration (field-relative X/Y and magnitude, m/s²) */
+        double t = state.Timestamp;
+        double vx = state.Speeds.vxMetersPerSecond;
+        double vy = state.Speeds.vyMetersPerSecond;
+        if (prevTimestamp > 0.0) {
+            double dt = t - prevTimestamp;
+            if (dt > 0.0) {
+                double ax = (vx - prevVx) / dt;
+                double ay = (vy - prevVy) / dt;
+                accelX_mps2.set(ax);
+                accelY_mps2.set(ay);
+                accelMag_mps2.set(Math.hypot(ax, ay));
+            }
+        }
+        prevVx = vx;
+        prevVy = vy;
+        prevTimestamp = t;
+
+        /* Limelight: tid (dimensionless), tx/ty (deg), ta (0–100 %), hasAllianceTarget */
         limelightTid.set(Limelight.getTid());
         limelightTx_deg.set(Limelight.tx());
         limelightTy_deg.set(Limelight.ty());
         limelightTa_percent.set(Limelight.ta());
-
-        /* Shooter: speed (RPS), supply voltage (V) */
-        shooterSpeed_rps.set(shooter.getShooterVelocity());
-        shooterSupplyVoltage_V.set(shooter.getShooterSupplyVoltage());
+        limelightHasAllianceTarget.set(driverAssist.hasAnyAllianceTarget());
     }
 }

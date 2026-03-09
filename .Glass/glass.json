@@ -1,0 +1,26 @@
+{
+  "NetworkTables": {
+    "transitory": {
+      "limelight": {
+        "open": true
+      }
+    },
+    "types": {
+      "/FMSInfo": "FMSInfo",
+      "/SmartDashboard/SysId/Dynamic Forward": "Command",
+      "/SmartDashboard/SysId/Dynamic Reverse": "Command",
+      "/SmartDashboard/SysId/Quasistatic Forward": "Command",
+      "/SmartDashboard/SysId/Quasistatic Reverse": "Command",
+      "/SmartDashboard/SysId/Routine": "String Chooser"
+    }
+  },
+  "NetworkTables Info": {
+    "visible": true
+  },
+  "NetworkTables Log": {
+    "visible": true
+  },
+  "NetworkTables Settings": {
+    "mode": "Client (NT4)"
+  }
+}

@@ -41,9 +41,6 @@ public class RobotContainer {
         driverAssist = new DriverAssist();
         logger = new Telemetry(drivetrain, new MegaTag(drivetrain), driverAssist);
 
-        // Configure PathPlanner auto
-        configurePathPlanner();
-
         // Initialize operator interface (configures all bindings)
         oi = new OI(drivetrain, driverAssist, logger, shooter);
 
@@ -54,35 +51,6 @@ public class RobotContainer {
     /**
      * Configures PathPlanner AutoBuilder for autonomous routines.
      */
-    private void configurePathPlanner() {
-        RobotConfig config;
-
-        try {
-            config = RobotConfig.fromGUISettings();
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to load PathPlanner GUI settings", e);
-        }
-
-        AutoBuilder.configure(
-            drivetrain::getPose,
-            drivetrain::resetPose,
-            drivetrain::getRobotRelativeSpeeds,
-            drivetrain::driveRobotRelative,
-
-            new PPHolonomicDriveController(
-                new PIDConstants(5.0, 0.0, 0.0), // Translation PID
-                new PIDConstants(5.0, 0.0, 0.0)  // Rotation PID
-            ),
-
-            config,
-
-            () -> DriverStation.getAlliance().orElse(DriverStation.Alliance.Blue)
-                == DriverStation.Alliance.Red,
-
-            (edu.wpi.first.wpilibj2.command.Subsystem) drivetrain
-        );
-    }
-
     /**
      * Returns the autonomous command to run, or null if none.
      */

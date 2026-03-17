@@ -32,7 +32,7 @@ import edu.wpi.first.wpilibj2.command.Subsystem;
 import frc.robot.Constants;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction;
-import com.pathplanner.lib.util.DriveFeedforwards;
+
 
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
 
@@ -442,13 +442,5 @@ public class CommandSwerveDrivetrain extends TunerSwerveDrivetrain implements Su
         );
     }
 
-    public void driveRobotRelative(ChassisSpeeds speeds, DriveFeedforwards feedforwards) {
-        setControl(
-            autoRequest
-            .withVelocityX(speeds.vxMetersPerSecond)
-            .withVelocityY(speeds.vyMetersPerSecond)
-            .withRotationalRate(speeds.omegaRadiansPerSecond)
-        );
-    }
 
 }

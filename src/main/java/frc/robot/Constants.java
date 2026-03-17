@@ -71,16 +71,8 @@ public final class Constants {
     public static final String LIMELIGHT_TABLE_NAME = "limelight";
     public static final int LL_AIM_PIPELINE = 0;
 
-    /** Limelight mount: angle down from horizontal (degrees). Use 20–30° range; 25 is a typical middle value. */
-    public static final double LL_MOUNT_ANGLE_DEG = 60.0;
-    /** Limelight lateral offset from robot center (meters). Positive = right of center; negative = left. 4 in ≈ 0.1016 m. */
-    public static final double LL_LATERAL_OFFSET_METERS = -4.0 * 0.0254;
-    /** Camera lens height above ground (m) and target center height (m) for distance-from-ty. Tune for your hub/speaker. */
-    public static final double LL_CAMERA_HEIGHT_METERS = 0.4953;
-    public static final double LL_TARGET_HEIGHT_METERS = 1.2446;
-    /** Min/max distance (m) used for tx setpoint to avoid division or bad geometry. */
-    public static final double LL_DISTANCE_MIN_METERS = 0.5;
-    public static final double LL_DISTANCE_MAX_METERS = 10.0;
+    /** Limelight mount: angle down from horizontal (degrees). Used by MegaTag2 orientation feed. */
+    public static final double LL_MOUNT_ANGLE_DEG = 25.0;
 
     // ---------------- MEGATAG2 / VISION POSE CONSTANTS ----------------
     /** Max vision pipeline latency (ms) to accept a pose. Reject older measurements. */
@@ -91,26 +83,42 @@ public final class Constants {
     public static final double VISION_MAX_ANGULAR_VELOCITY_DEG_S = 360.0;
     /** Std devs [x, y, theta] when pose is trusted (multi-tag or good single-tag). Meters, meters, radians. */
     public static final double VISION_STD_DEV_XY_GOOD = 0.5;
-    public static final double VISION_STD_DEV_THETA_GOOD_RAD = Math.toRadians(6.0);
+    /** MegaTag2 reflects the heading you feed it back — never let vision override the gyro heading. */
+    public static final double VISION_STD_DEV_THETA_GOOD_RAD = 9999.0;
     /** Std devs when only one tag visible (looser, especially theta). */
     public static final double VISION_STD_DEV_XY_SINGLE_TAG = 0.7;
-    public static final double VISION_STD_DEV_THETA_SINGLE_TAG_RAD = Math.toRadians(15.0);
+    public static final double VISION_STD_DEV_THETA_SINGLE_TAG_RAD = 9999.0;
+
+    // ---------------- HUB CENTER COORDINATES (field-relative, WPILib blue origin, meters) ----------------
+    // Used by pose-based auto-alignment: robot turns to face atan2(hubY - robotY, hubX - robotX).
+    // Verify these against your 2026-rebuilt-andymark.json field layout file.
+    public static final double BLUE_HUB_CENTER_X = 4.62534;
+    public static final double BLUE_HUB_CENTER_Y = 4.034536;
+    public static final double RED_HUB_CENTER_X  = 11.915;
+    public static final double RED_HUB_CENTER_Y  = 4.034536;
 
     // ---------------- APRILTAG CONSTANTS ----------------
     // REBUILT FRC Challenge AprilTag IDs
-    public static final int[] BLUE_HUB_TAG_IDS = {2, 3, 4, 5, 8, 7, 9, 10, 11}; // 7 is not a hub tag
-    public static final int[] RED_HUB_TAG_IDS = {18, 19, 20, 21, 24, 25, 26, 27};
+    public static final int[] BLUE_HUB_TAG_IDS = {2,3,8,9,18,19,24,25}; // tag 7, 13, 14 is a TRENCH tag, not a hub tag
+    public static final int[] RED_HUB_TAG_IDS = {4,5,10,11,20,21,26,27}; // tag 23 is not a hub tag
 
     // ---------------- AIM ASSIST PID CONSTANTS ----------------
     // For 10–12 ball bursts: small KI helps correct steady drift while holding on target.
-    public static final double AIM_KP = 0.5
-    ;
-    public static final double AIM_KI = 0.008;   // was 0; slight integral helps sustained aim during long bursts
-    public static final double AIM_KD = 0.001;
-    public static final double AIM_TOLERANCE = 1.0;
+    public static final double AIM_KP = 0.35;
+    public static final double AIM_KI = 0.002;
+    public static final double AIM_KD = 0.008;
+    public static final double AIM_TOLERANCE = 1.5;
 
     /** Max rotation speed for aim assist */
-    public static final double MAX_AIM_RAD_PER_SEC = 2.5;
+    public static final double MAX_AIM_RAD_PER_SEC = 6.0;
+
+    /** Seconds after tag acquisition before giving up on alignment (didn't converge). */
+    public static final double AIM_TIMEOUT_S = 3.0;
+    /**
+     * Tx error (degrees) needed to re-enable alignment after reaching target.
+     * If robot drifts more than this from the setpoint, correction resumes automatically.
+     */
+    public static final double AIM_RESUME_THRESHOLD_DEG = 4.0;
 
     /** Shooter subsystem: TA → RPS (interpolated) and velocity PID (Kraken, rotations/sec). */
     public static final class Shooter {
@@ -121,11 +129,12 @@ public final class Constants {
         // TA is 0–1 (fraction of image area) as returned by Limelight.
         private static final InterpolatingDoubleTreeMap TA_TO_RPS = new InterpolatingDoubleTreeMap();
         static {
-            TA_TO_RPS.put(0.0,  70.0);
-            TA_TO_RPS.put(0.2,  60.0);
+            TA_TO_RPS.put(0.0,  85.0);
+            TA_TO_RPS.put(0.2,  75.0);
             TA_TO_RPS.put(0.4,  55.0);
-            TA_TO_RPS.put(0.7,  35.0);
-            TA_TO_RPS.put(1.0,  25.0);  // cap close range
+            TA_TO_RPS.put(0.7,  40.0);
+            TA_TO_RPS.put(0.85,  30.0);
+            TA_TO_RPS.put(1.0,  20.0);  // cap close range
         }
 
         /** Target shooter RPS from Limelight TA (0–1). Clamps TA to [0, 1]. Returns 0 if no target. */
@@ -136,11 +145,13 @@ public final class Constants {
         }
 
         // ---------------- VELOCITY PID (Kraken) ----------------
-        public static final double SHOOTER_VEL_KP = 2.3;    // was 2.0; bumped to close 2-3 RPS error faster
-        public static final double SHOOTER_VEL_KI = 0.015;  // was 0.01; slightly more integral for sustained error
-        public static final double SHOOTER_VEL_KD = 0.06;   // was 0.05; small bump to dampen overshoot from higher kP
-        public static final double SHOOTER_VEL_KV = 0.21;   // was 0.18; more feedforward to proactively hold speed under load
-        public static final double SHOOTER_VEL_KS = 0.1;    // unchanged
+        // Values from SysId characterization (2026 regional)
+        public static final double SHOOTER_VEL_KP = 0.13868;
+        public static final double SHOOTER_VEL_KI = 0.0;
+        public static final double SHOOTER_VEL_KD = 0.003;
+        public static final double SHOOTER_VEL_KV = 0.11925;
+        public static final double SHOOTER_VEL_KS = 0.12745;
+        public static final double SHOOTER_VEL_KA = 0.010366;
 
         /** Fallback shooter speed (RPS) when no AprilTag target is visible. */
         public static final double SHOOTER_DEFAULT_RPS = 60.0;

@@ -1,5 +1,6 @@
 package frc.robot.subsystems;
 
+import static edu.wpi.first.units.Units.RotationsPerSecond;
 import static edu.wpi.first.units.Units.Volts;
 
 import com.ctre.phoenix6.SignalLogger;
@@ -19,7 +20,9 @@ import com.revrobotics.spark.SparkLowLevel.MotorType;
 import com.revrobotics.spark.config.SparkBaseConfig.IdleMode;
 import com.revrobotics.spark.config.SparkMaxConfig;
 
-import edu.wpi.first.wpilibj.RobotController;
+import edu.wpi.first.networktables.DoublePublisher;
+import edu.wpi.first.networktables.NetworkTable;
+import edu.wpi.first.networktables.NetworkTableInstance;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
@@ -37,10 +40,7 @@ public class Shooter extends SubsystemBase {
   private static final double FEED_VOLTAGE_NOMINAL = 9.0;
   private static final double SHOOT_VOLTAGE_NOMINAL = 9.0;
 
-  /** Nominal bus voltage for scaling (V). */
-  private static final double NOMINAL_BUS_V = 12.0;
-
-  private final SparkMax feed_motor = new SparkMax(NEO_ID, MotorType.kBrushless);
+private final SparkMax feed_motor = new SparkMax(NEO_ID, MotorType.kBrushless);
   private final TalonFX shoot_motor = new TalonFX(KRAKEN_ID);
 
   private final VoltageOut krakenVoltage = new VoltageOut(0.0);
@@ -48,6 +48,16 @@ public class Shooter extends SubsystemBase {
 
   /** Open-loop ramp period (s) for normal operation; 0 during SysId so data is not distorted. */
   private static final double OPEN_LOOP_RAMP_PERIOD_S = 0.12;
+
+  /** Shooter telemetry (NetworkTables → Elastic). */
+  private final NetworkTable shooterTable = NetworkTableInstance.getDefault().getTable("Shooter");
+  private final DoublePublisher ntTargetRPS   = shooterTable.getDoubleTopic("TargetRPS").publish();
+  private final DoublePublisher ntActualRPS   = shooterTable.getDoubleTopic("ActualRPS").publish();
+  private final DoublePublisher ntErrorRPS    = shooterTable.getDoubleTopic("ErrorRPS").publish();
+  private final DoublePublisher ntMotorVoltage = shooterTable.getDoubleTopic("MotorVoltage_V").publish();
+
+  /** Last commanded target velocity; 0 when stopped. */
+  private double m_targetRPS = 0.0;
 
   /** SysId routine for characterizing the Kraken shooter motor. */
   private final SysIdRoutine m_sysIdRoutine = new SysIdRoutine(
@@ -58,7 +68,9 @@ public class Shooter extends SubsystemBase {
           state -> SignalLogger.writeString("SysIdShooter_State", state.toString())),
       new SysIdRoutine.Mechanism(
           output -> shoot_motor.setControl(krakenVoltage.withOutput(output.in(Volts))),
-          null,
+          log -> log.motor("shooter-kraken")
+              .voltage(Volts.of(shoot_motor.getMotorVoltage().getValueAsDouble()))
+              .angularVelocity(RotationsPerSecond.of(shoot_motor.getVelocity().getValueAsDouble())),
           this));
 
   public Shooter() {
@@ -78,6 +90,7 @@ public class Shooter extends SubsystemBase {
             .withKD(Constants.Shooter.SHOOTER_VEL_KD)
             .withKS(Constants.Shooter.SHOOTER_VEL_KS)
             .withKV(Constants.Shooter.SHOOTER_VEL_KV)
+            .withKA(Constants.Shooter.SHOOTER_VEL_KA)
     );
 
     // ===== Ramp for smooth acceleration (disabled during SysId to avoid corrupting data) =====
@@ -101,23 +114,11 @@ public class Shooter extends SubsystemBase {
     stop();
   }
 
-  /** Scale factor from current bus voltage so intake/shoot voltages stay consistent when battery sags. */
-  private static double voltageScale() {
-    double v = RobotController.getBatteryVoltage();
-    return Math.min(1.0, Math.max(0.5, v / NOMINAL_BUS_V));
-  }
-
-  /** Sets shooter and feeder to given nominal voltages (scaled by bus voltage). */
-  private void setVoltages(double shootVNominal, double feedVNominal) {
-    double scale = voltageScale();
-    shoot_motor.setControl(krakenVoltage.withOutput(shootVNominal * scale));
-    feed_motor.setVoltage(feedVNominal * scale);
-  }
-
-  // ===== LT Intake Mode (voltage-compensated) =====
+  // ===== LT Intake Mode =====
 
   public void runIntake() {
-    setVoltages(SHOOT_VOLTAGE_NOMINAL, -FEED_VOLTAGE_NOMINAL);
+    shoot_motor.setControl(krakenVoltage.withOutput(SHOOT_VOLTAGE_NOMINAL));
+    feed_motor.setVoltage(-FEED_VOLTAGE_NOMINAL);
   }
 
   //  ===== RT Shooter Mode (velocity control: holds RPM under load) =====
@@ -131,12 +132,13 @@ public class Shooter extends SubsystemBase {
       stop();
       return;
     }
+    m_targetRPS = targetRPS;
     shoot_motor.setControl(shooterVelocity.withVelocity(targetRPS));
   }
 
   /** Get ball to the shooter (y button). */
   public void runFeed() {
-    feed_motor.setVoltage(FEED_VOLTAGE_NOMINAL * voltageScale());
+    feed_motor.setVoltage(FEED_VOLTAGE_NOMINAL);
   }
 
   /** Stops only the feeder motor (shooter wheel unchanged). */
@@ -146,14 +148,13 @@ public class Shooter extends SubsystemBase {
 
   /** Reverse feeder (B button). */
   public void runFeedReverse() {
-    feed_motor.setVoltage(-FEED_VOLTAGE_NOMINAL * voltageScale());
+    feed_motor.setVoltage(-FEED_VOLTAGE_NOMINAL);
   }
 
   /** Reverse whole system of taking in balls (A button). */
   public void runSystemReverse() {
-    double scale = voltageScale();
-    feed_motor.setVoltage(FEED_VOLTAGE_NOMINAL * scale);
-    shoot_motor.setControl(krakenVoltage.withOutput(-SHOOT_VOLTAGE_NOMINAL * scale));
+    feed_motor.setVoltage(FEED_VOLTAGE_NOMINAL);
+    shoot_motor.setControl(krakenVoltage.withOutput(0.0));
   }
 
   // ===== Mechanism feedback (optional beam break / sensor) =====
@@ -169,8 +170,18 @@ public class Shooter extends SubsystemBase {
 
   // ===== Stop Everything =====
   public void stop() {
+    m_targetRPS = 0.0;
     shoot_motor.setControl(krakenVoltage.withOutput(0.0));
     feed_motor.setVoltage(0.0);
+  }
+
+  @Override
+  public void periodic() {
+    double actual = shoot_motor.getVelocity().getValueAsDouble();
+    ntTargetRPS.set(m_targetRPS);
+    ntActualRPS.set(actual);
+    ntErrorRPS.set(m_targetRPS - actual);
+    ntMotorVoltage.set(shoot_motor.getMotorVoltage().getValueAsDouble());
   }
 
   // ===== SysId characterization =====

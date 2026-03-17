@@ -1,11 +1,9 @@
 package frc.robot;
 
-import com.pathplanner.lib.auto.AutoBuilder;
-import com.pathplanner.lib.controllers.PPHolonomicDriveController;
-import com.pathplanner.lib.config.RobotConfig;
-import com.pathplanner.lib.config.PIDConstants;
-
-import edu.wpi.first.wpilibj.DriverStation;
+import edu.wpi.first.cscore.UsbCamera;
+import edu.wpi.first.cameraserver.CameraServer;
+import edu.wpi.first.wpilibj.smartdashboard.SendableChooser;
+import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
 import frc.robot.generated.TunerConstants;
 import frc.robot.subsystems.CommandSwerveDrivetrain;
@@ -30,7 +28,7 @@ public class RobotContainer {
     // Helper classes
     private final DriverAssist driverAssist;
     private final Telemetry logger;
-    private final OI oi;
+    private final SendableChooser<Command> autoChooser;
 
     public RobotContainer() {
         // Initialize subsystems
@@ -38,56 +36,31 @@ public class RobotContainer {
         shooter = new Shooter();
 
         // Initialize helper classes
-        driverAssist = new DriverAssist();
-        logger = new Telemetry(drivetrain, new MegaTag(drivetrain), driverAssist);
+        MegaTag megaTag = new MegaTag(drivetrain);
+        driverAssist = new DriverAssist(drivetrain, megaTag);
+        logger = new Telemetry(drivetrain, megaTag, driverAssist);
 
-        // Configure PathPlanner auto
-        configurePathPlanner();
+        autoChooser = new SendableChooser<>();
+        autoChooser.setDefaultOption("Align + Shoot", Autos.simpleAlignAndShoot(drivetrain, shooter, driverAssist));
+        SmartDashboard.putData("Auto Chooser", autoChooser);
 
         // Initialize operator interface (configures all bindings)
-        oi = new OI(drivetrain, driverAssist, logger, shooter);
+        new OI(drivetrain, driverAssist, logger, shooter);
 
         // SysId chooser and test commands on Shuffleboard
         new SysIdDashboard(drivetrain, shooter);
-    }
 
-    /**
-     * Configures PathPlanner AutoBuilder for autonomous routines.
-     */
-    private void configurePathPlanner() {
-        RobotConfig config;
-
-        try {
-            config = RobotConfig.fromGUISettings();
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to load PathPlanner GUI settings", e);
-        }
-
-        AutoBuilder.configure(
-            drivetrain::getPose,
-            drivetrain::resetPose,
-            drivetrain::getRobotRelativeSpeeds,
-            drivetrain::driveRobotRelative,
-
-            new PPHolonomicDriveController(
-                new PIDConstants(5.0, 0.0, 0.0), // Translation PID
-                new PIDConstants(5.0, 0.0, 0.0)  // Rotation PID
-            ),
-
-            config,
-
-            () -> DriverStation.getAlliance().orElse(DriverStation.Alliance.Blue)
-                == DriverStation.Alliance.Red,
-
-            (edu.wpi.first.wpilibj2.command.Subsystem) drivetrain
-        );
+        // LifeCam stream - Elastic auto-discovers CameraServer streams
+        UsbCamera camera = CameraServer.startAutomaticCapture(0);
+        camera.setResolution(320, 240);
+        camera.setFPS(30);
     }
 
     /**
      * Returns the autonomous command to run, or null if none.
      */
     public Command getAutonomousCommand() {
-        return AutoBuilder.buildAuto("NewAuto");
+        return autoChooser.getSelected();
     }
 
     /**

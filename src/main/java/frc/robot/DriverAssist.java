@@ -1,12 +1,22 @@
 package frc.robot;
 
+import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.controller.PIDController;
+import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.wpilibj.DriverStation;
+import edu.wpi.first.wpilibj.Timer;
 
+import frc.robot.subsystems.CommandSwerveDrivetrain;
 import frc.robot.vision.Limelight;
+import frc.robot.vision.MegaTag;
 
 /**
- * Handles driver assist features including Limelight-based aim assist.
+ * Handles driver assist features including pose-based auto-alignment and shooter assist.
+ *
+ * Auto-alignment uses the drivetrain's fused pose (odometry + MegaTag1 vision) to compute
+ * the angle from the robot's current position to the hub center, then runs a heading PID
+ * to rotate the robot to face that angle. Alignment is only active while MT1 is providing
+ * a valid field-space pose.
  */
 public class DriverAssist {
     /** Pre-computed combined tag IDs when alliance is unknown (avoids per-cycle allocation). */
@@ -17,9 +27,42 @@ public class DriverAssist {
         System.arraycopy(Constants.RED_HUB_TAG_IDS, 0, BOTH_HUB_TAG_IDS, Constants.BLUE_HUB_TAG_IDS.length, Constants.RED_HUB_TAG_IDS.length);
     }
 
+    private final CommandSwerveDrivetrain drivetrain;
+    private final MegaTag megaTag;
     private final PIDController aimPid;
 
-    public DriverAssist() {
+    // ---- Alignment suppression state ----
+    /** True once the robot has reached the setpoint; output suppressed until robot drifts back out. */
+    private boolean alignmentComplete = false;
+    /** True if alignment timed out before converging; stays suppressed until resetAimPid(). */
+    private boolean alignmentTimedOut = false;
+    /** FPGA timestamp (s) when this alignment session started. */
+    private double alignmentStartTimeS = -1;
+
+    // ---- Locked hub target (set at RB press, held for the full session) ----
+    /** Hub center X selected when RB was pressed (meters, field-relative). */
+    private double targetHubX = Constants.BLUE_HUB_CENTER_X;
+    /** Hub center Y selected when RB was pressed (meters, field-relative). */
+    private double targetHubY = Constants.BLUE_HUB_CENTER_Y;
+
+    // ---- Telemetry (last computed values) ----
+    private double lastCurrentHeadingDeg = 0.0;
+    private double lastDesiredHeadingDeg = 0.0;
+    private double lastHeadingErrorDeg   = 0.0;
+    private double lastAimOutput         = 0.0;
+    private double lastDistanceM         = 0.0;
+    private boolean aimActive            = false;
+
+    public double getLastCurrentHeadingDeg() { return lastCurrentHeadingDeg; }
+    public double getLastDesiredHeadingDeg()  { return lastDesiredHeadingDeg; }
+    public double getLastHeadingErrorDeg()    { return lastHeadingErrorDeg; }
+    public double getLastAimOutput()          { return lastAimOutput; }
+    public double getLastDistanceM()          { return lastDistanceM; }
+    public boolean isAimActive()              { return aimActive; }
+
+    public DriverAssist(CommandSwerveDrivetrain drivetrain, MegaTag megaTag) {
+        this.drivetrain = drivetrain;
+        this.megaTag = megaTag;
         aimPid = new PIDController(Constants.AIM_KP, Constants.AIM_KI, Constants.AIM_KD);
         aimPid.setTolerance(Constants.AIM_TOLERANCE);
         aimPid.enableContinuousInput(-180, 180);
@@ -27,104 +70,155 @@ public class DriverAssist {
     }
 
     /**
-     * Gets the AprilTag IDs for the current alliance.
-     * When alliance is unknown (e.g. before match), returns both blue and red IDs so aim/shooter still work.
+     * Gets the hub AprilTag IDs for the current alliance.
+     * When alliance is unknown returns both so aim/shooter still work.
      */
     public int[] getAllianceTagIds() {
         var alliance = DriverStation.getAlliance();
-        if (alliance.isEmpty()) {
-            return BOTH_HUB_TAG_IDS;
-        }
+        if (alliance.isEmpty()) return BOTH_HUB_TAG_IDS;
         return alliance.get() == DriverStation.Alliance.Blue
             ? Constants.BLUE_HUB_TAG_IDS
             : Constants.RED_HUB_TAG_IDS;
     }
 
     /**
-     * Checks if any hub AprilTag (red or blue) is visible.
-     * Accepts any tag in BOTH_HUB_TAG_IDS regardless of alliance.
+     * Checks if any hub AprilTag (red or blue) is currently visible via rawfiducials.
+     * Works in MegaTag2 mode (tid is unreliable there).
      */
     public boolean hasAnyAllianceTarget() {
-        if (!Limelight.hasTarget()) {
-            System.out.println("[DA] No target (tv=0)");
-            return false;
-        }
-        int tid = (int) Math.round(Limelight.getTid());
-        for (int tagId : BOTH_HUB_TAG_IDS) {
-            if (tagId == tid) return true;
-        }
-        System.out.println("[DA] tid=" + tid + " not a hub tag");
-        return false;
+        return Limelight.hasAnyTag(BOTH_HUB_TAG_IDS);
     }
 
     /**
-     * Target shooter velocity (rotations per second) from Limelight TA.
-     * Uses continuous interpolation (InterpolatingDoubleTreeMap) for smoother shots across distance.
-     * Returns 0 if no AprilTag (shooter should stop).
+     * Target shooter velocity (RPS) from the closest hub tag's TA.
+     * Returns 0 if no hub tag is visible.
      */
     public double getShooterTargetRPSFromLimelight() {
-        if (!hasAnyAllianceTarget()) {
-            return 0.0;
-        }
+        if (!hasAnyAllianceTarget()) return 0.0;
         return Constants.Shooter.getShooterTargetRPSFromTA(Limelight.ta());
     }
 
     /**
-     * Resets the aim PID controller.
+     * Resets the aim PID and clears all alignment suppression state.
+     * Call when RB is pressed to start a fresh alignment session.
      */
     public void resetAimPid() {
         aimPid.reset();
-    }
+        alignmentComplete   = false;
+        alignmentTimedOut   = false;
+        alignmentStartTimeS = -1;
 
-    /**
-     * Estimates distance to target (m) from Limelight ty and mount angle.
-     * Uses geometry: (targetHeight - cameraHeight) / tan(mountAngle + ty).
-     */
-    private static double estimateDistanceToTarget(double tyDeg) {
-        double angleDeg = Constants.LL_MOUNT_ANGLE_DEG + tyDeg;
-        if (angleDeg <= 0.5 || angleDeg >= 89.5) {
-            return Constants.LL_DISTANCE_MAX_METERS;
+        // Snapshot pose at RB press and lock in the closer hub for the full session.
+        var pose = drivetrain.getPose();
+        double rx = pose.getX();
+        double ry = pose.getY();
+        double distBlue = Math.hypot(Constants.BLUE_HUB_CENTER_X - rx, Constants.BLUE_HUB_CENTER_Y - ry);
+        double distRed  = Math.hypot(Constants.RED_HUB_CENTER_X  - rx, Constants.RED_HUB_CENTER_Y  - ry);
+        if (distBlue <= distRed) {
+            targetHubX = Constants.BLUE_HUB_CENTER_X;
+            targetHubY = Constants.BLUE_HUB_CENTER_Y;
+        } else {
+            targetHubX = Constants.RED_HUB_CENTER_X;
+            targetHubY = Constants.RED_HUB_CENTER_Y;
         }
-        double angleRad = Math.toRadians(angleDeg);
-        double d = (Constants.LL_TARGET_HEIGHT_METERS - Constants.LL_CAMERA_HEIGHT_METERS) / Math.tan(angleRad);
-        return Math.max(Constants.LL_DISTANCE_MIN_METERS, Math.min(Constants.LL_DISTANCE_MAX_METERS, d));
     }
 
     /**
-     * Desired tx (degrees) so that robot center (not camera) is aimed at target.
-     * Camera is offset laterally; when center is on target, camera sees target at this tx.
+     * Returns true when the heading PID is within tolerance (robot is aimed at hub).
      */
-    private static double getTxSetpointForCenterAim(double distanceMeters) {
-        return -Math.toDegrees(Math.atan2(Constants.LL_LATERAL_OFFSET_METERS, distanceMeters));
+    public boolean isAimed() {
+        return aimPid.atSetpoint();
     }
 
     /**
-     * Calculates the aim correction based on Limelight data (tx = horizontal offset to target).
-     * Accounts for camera mount angle (20–30°) and 4 in lateral offset so the robot center aligns.
-     * Uses pipeline + capture latency to predict current tx and reduce overshoot at high rotation speeds.
+     * Computes the rotation rate (rad/s) needed to face the hub center.
      *
-     * @param omegaRadPerSec Current robot angular velocity (rad/s); use 0 if unknown
-     * @return Rotation rate in rad/s to drive tx toward the center-aim setpoint
+     * Uses the drivetrain's fused pose (odometry + MegaTag2) to get the robot's
+     * current field position and heading, draws a line to the hub center, and
+     * runs a heading PID on the angle error.
+     *
+     * Auto-stops once aligned; auto-resumes if the robot drifts past
+     * AIM_RESUME_THRESHOLD_DEG. Permanently stops if AIM_TIMEOUT_S elapses
+     * without convergence (requires RB re-press to reset).
+     *
+     * @param omegaRadPerSec Unused — kept for API compatibility with OI/Autos callers.
+     * @return Rotation rate in rad/s (positive = CCW). 0 when suppressed or timed out.
      */
     public double calculateAimCorrection(double omegaRadPerSec) {
-        if (!hasAnyAllianceTarget()) {
-            aimPid.reset();
+        // Start session timer on first call.
+        if (alignmentStartTimeS < 0) {
+            alignmentStartTimeS = Timer.getFPGATimestamp();
+        }
+
+        // Permanently stopped until RB is re-pressed.
+        if (alignmentTimedOut) {
+            aimActive = false;
             return 0.0;
         }
-        double tx = Limelight.tx();
-        double ty = Limelight.ty();
-        double totalLatencyMs = Limelight.tl() + Limelight.cl();
-        double omegaDegS = Math.toDegrees(omegaRadPerSec);
-        double predictedTx = tx - omegaDegS * totalLatencyMs / 1000.0;
+        if (Timer.getFPGATimestamp() - alignmentStartTimeS > Constants.AIM_TIMEOUT_S) {
+            alignmentTimedOut = true;
+            aimActive = false;
+            return 0.0;
+        }
 
-        double distanceM = estimateDistanceToTarget(ty);
-        double setpoint = getTxSetpointForCenterAim(distanceM);
-        return aimPid.calculate(predictedTx, setpoint);
+        // Only align when a hub tag is visible and MT1 has a current valid field pose.
+        if (!hasAnyAllianceTarget() || !megaTag.hasGoodVisionPose()) {
+            aimActive = false;
+            return 0.0;
+        }
+
+        // Get robot position and heading from MT1-fused pose estimator.
+        Pose2d robotPose = drivetrain.getPose();
+        double robotX = robotPose.getX();
+        double robotY = robotPose.getY();
+        double currentHeadingDeg = robotPose.getRotation().getDegrees();
+
+        // Use the hub locked in at RB press (set by resetAimPid).
+        double hubX = targetHubX;
+        double hubY = targetHubY;
+
+        // Vector from robot to hub center → desired heading.
+        double dx = hubX - robotX;
+        double dy = hubY - robotY;
+        double desiredHeadingDeg = MathUtil.inputModulus(Math.toDegrees(Math.atan2(dy, dx)) + 180.0, -180.0, 180.0);
+        double distanceM = Math.hypot(dx, dy);
+
+        // Heading error wrapped to [-180, 180] for logging and resume check.
+        double headingErrorDeg = MathUtil.inputModulus(desiredHeadingDeg - currentHeadingDeg, -180.0, 180.0);
+
+        // PID: enableContinuousInput handles wrap-around.
+        // positive output → CCW rotation → withRotationalRate(positive) in CTRE field-centric.
+        double output = aimPid.calculate(currentHeadingDeg, desiredHeadingDeg);
+
+        lastCurrentHeadingDeg = currentHeadingDeg;
+        lastDesiredHeadingDeg = desiredHeadingDeg;
+        lastHeadingErrorDeg   = headingErrorDeg;
+        lastAimOutput         = output;
+        lastDistanceM         = distanceM;
+
+        // Lock complete once on-target.
+        if (aimPid.atSetpoint()) {
+            alignmentComplete = true;
+        }
+
+        // Auto-resume: robot drifted past threshold → restart correction.
+        if (alignmentComplete && Math.abs(headingErrorDeg) > Constants.AIM_RESUME_THRESHOLD_DEG) {
+            alignmentComplete = false;
+            aimPid.reset();
+            alignmentStartTimeS = Timer.getFPGATimestamp();
+        }
+
+        // Suppress output while alignment is complete (on-target).
+        if (alignmentComplete) {
+            aimActive = false;
+            return 0.0;
+        }
+
+        aimActive = true;
+        return output;
     }
 
-    /**
-     * Calculates the aim correction without latency compensation (omega assumed 0).
-     */
+    /** Calculates aim correction with no caller-supplied omega (omega obtained internally from drivetrain). */
     public double calculateAimCorrection() {
         return calculateAimCorrection(0.0);
     }

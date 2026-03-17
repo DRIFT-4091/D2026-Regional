@@ -14,15 +14,14 @@ import frc.robot.Constants;
 import frc.robot.subsystems.CommandSwerveDrivetrain;
 
 /**
- * MegaTag2 vision pose integration for Limelight.
- * Reads botpose_orb_wpiblue, sends robot yaw to the camera every update,
- * and pushes valid measurements to the drivetrain pose estimator.
- * When the pose is rejected (high latency, no tags, fast spin), no vision
- * update is applied so odometry and aim/shooter behavior fall back to
- * single-tag (tx/ty/ta) without being corrupted by bad vision.
+ * MegaTag1 vision pose integration for Limelight.
+ * Reads botpose_wpiblue every cycle and pushes valid measurements to the
+ * drivetrain pose estimator. No robot yaw feed required.
+ * Poses are rejected on high latency, too few tags, fast spin, or out-of-field
+ * position so odometry and aim/shooter behavior are never corrupted by bad vision.
  */
 public class MegaTag {
-    /** botpose_orb_wpiblue: [x, y, z, roll, pitch, yaw, latency_ms, tagCount, tagSpan, avgTagDist, ...] */
+    /** botpose_wpiblue: [x, y, z, roll, pitch, yaw, latency_ms, tagCount, tagSpan, avgTagDist, ...] */
     private static final int INDEX_X = 0;
     private static final int INDEX_Y = 1;
     private static final int INDEX_YAW = 5;
@@ -59,16 +58,13 @@ public class MegaTag {
 
     /**
      * Call every cycle (e.g. from drivetrain telemetry or robot periodic).
-     * Sends robot orientation to Limelight, reads MegaTag2 pose, and
-     * adds a vision measurement only when the pose passes quality checks.
+     * Reads MegaTag1 pose and adds a vision measurement only when the pose
+     * passes quality checks.
      */
     public void update() {
-        // MegaTag2 requires robot yaw every frame
-        double yawDeg = drivetrain.getPose().getRotation().getDegrees();
         double yawRateDegS = Math.toDegrees(drivetrain.getRobotRelativeSpeeds().omegaRadiansPerSecond);
-        table.getEntry("robot_orientation_set").setDoubleArray(new double[] { yawDeg, yawRateDegS, 0, 0, 0, 0 });
 
-        double[] botpose = table.getEntry("botpose_orb_wpiblue").getDoubleArray(new double[0]);
+        double[] botpose = table.getEntry("botpose_wpiblue").getDoubleArray(new double[0]);
         lastUpdateWasGood = false;
 
         if (botpose.length < MIN_ARRAY_LENGTH) {

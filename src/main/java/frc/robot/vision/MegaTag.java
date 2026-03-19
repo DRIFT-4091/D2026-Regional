@@ -39,6 +39,7 @@ public class MegaTag {
     private final CommandSwerveDrivetrain drivetrain;
     private final NetworkTable table;
     private boolean lastUpdateWasGood;
+    private Pose2d lastAcceptedPose = null;
 
     public MegaTag(CommandSwerveDrivetrain drivetrain) {
         this.drivetrain = drivetrain;
@@ -104,11 +105,17 @@ public class MegaTag {
                         Constants.VISION_STD_DEV_THETA_SINGLE_TAG_RAD * distanceFactor);
 
         drivetrain.addVisionMeasurement(visionPose, timestampSeconds, stdDevs);
+        lastAcceptedPose = visionPose;
         lastUpdateWasGood = true;
     }
 
     /** True if the last update applied a vision measurement (pose was trusted). */
     public boolean hasGoodVisionPose() {
         return lastUpdateWasGood;
+    }
+
+    /** Returns the last accepted vision pose, or null if no valid pose has ever been received. */
+    public Pose2d getLastAcceptedPose() {
+        return lastAcceptedPose;
     }
 }

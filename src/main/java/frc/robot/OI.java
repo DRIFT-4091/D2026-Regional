@@ -10,18 +10,24 @@ import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.button.CommandXboxController;
 import edu.wpi.first.wpilibj2.command.button.RobotModeTriggers;
 
+import frc.robot.assist.DriverAssist;
+import frc.robot.dashboard.Telemetry;
 import frc.robot.subsystems.CommandSwerveDrivetrain;
 import frc.robot.subsystems.Shooter;
 import frc.robot.vision.Limelight;
 
 /**
- * Operator Interface - single GameSir G7 controller (Xbox layout) on port 0.
- * Left stick: translation. Right stick: rotation.
- * LT: intake. LB: reset heading. RT: shooter. Y: feeder.
- * B: feed reverse. A: system reverse. X: basket wobble. RB: auto-align.
+ * Operator Interface - two controllers.
+ *
+ * Driver (port 0): Left stick translation, right stick rotation.
+ *   LB: reset heading. RB: auto-align. X: basket wobble.
+ *
+ * Operator (port 1): LT: intake. RT: shoot wheel. Y: feeder.
+ *   B: feed reverse. A: system reverse. Rumble on shooter at target.
  */
 public class OI {
     private final CommandXboxController driverJoystick;
+    private final CommandXboxController operatorJoystick;
     private final CommandSwerveDrivetrain drivetrain;
     private final Shooter shooter;
     private final DriverAssist driverAssist;
@@ -37,6 +43,7 @@ public class OI {
         this.driverAssist = driverAssist;
         this.logger = logger;
         this.driverJoystick = new CommandXboxController(Constants.DRIVER_CONTROLLER_PORT);
+        this.operatorJoystick = new CommandXboxController(Constants.OPERATOR_CONTROLLER_PORT);
 
         this.drive = new SwerveRequest.FieldCentric()
                 .withDeadband(Constants.DRIVE_DEADBAND)
@@ -109,19 +116,19 @@ public class OI {
 
     private void configureShooterControls() {
         // LT = intake
-        driverJoystick.leftTrigger().whileTrue(
+        operatorJoystick.leftTrigger().whileTrue(
             Commands.runEnd(shooter::runIntake, shooter::stop, shooter)
         );
 
         // RT = shoot wheel, Y = feeder (only when shooter is at target RPS).
-        // Joystick rumbles when shooter is at target RPS and RT is held.
-        driverJoystick.rightTrigger().or(driverJoystick.y()).whileTrue(
+        // Operator joystick rumbles when shooter is at target RPS and RT is held.
+        operatorJoystick.rightTrigger().or(operatorJoystick.y()).whileTrue(
             Commands.runEnd(
                 () -> {
                     double limelightRps = driverAssist.getShooterTargetRPSFromLimelight();
                     double targetRps = limelightRps > 0 ? limelightRps : Constants.Shooter.SHOOTER_DEFAULT_RPS;
-                    boolean rt = driverJoystick.rightTrigger().getAsBoolean();
-                    boolean y = driverJoystick.y().getAsBoolean();
+                    boolean rt = operatorJoystick.rightTrigger().getAsBoolean();
+                    boolean y = operatorJoystick.y().getAsBoolean();
                     double actual = shooter.getShooterVelocity();
                     boolean atTarget = Math.abs(actual - targetRps) <= Constants.Shooter.SHOOTER_RPS_RUMBLE_TOLERANCE;
                     if (rt) {
@@ -131,28 +138,28 @@ public class OI {
                     }
                     if (y && atTarget) {
                         shooter.runFeed();
-                        driverJoystick.getHID().setRumble(GenericHID.RumbleType.kBothRumble, 0);
+                        operatorJoystick.getHID().setRumble(GenericHID.RumbleType.kBothRumble, 0);
                     } else {
                         shooter.stopFeeder();
-                        driverJoystick.getHID().setRumble(GenericHID.RumbleType.kBothRumble,
+                        operatorJoystick.getHID().setRumble(GenericHID.RumbleType.kBothRumble,
                                 (rt && atTarget) ? Constants.Shooter.SHOOTER_RUMBLE_STRENGTH : 0);
                     }
                 },
                 () -> {
                     shooter.stop();
-                    driverJoystick.getHID().setRumble(GenericHID.RumbleType.kBothRumble, 0);
+                    operatorJoystick.getHID().setRumble(GenericHID.RumbleType.kBothRumble, 0);
                 },
                 shooter
             )
         );
 
         // B = feed reverse
-        driverJoystick.b().whileTrue(
+        operatorJoystick.b().whileTrue(
             Commands.runEnd(shooter::runFeedReverse, shooter::stop, shooter)
         );
 
         // A = system reverse
-        driverJoystick.a().whileTrue(
+        operatorJoystick.a().whileTrue(
             Commands.runEnd(shooter::runSystemReverse, shooter::stop, shooter)
         );
     }

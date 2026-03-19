@@ -249,6 +249,95 @@ public final class Limelight {
     }
 
     /**
+     * Selects the best hub tag to lock onto, handling ambiguous pairs.
+     *
+     * Algorithm:
+     *   1. Collect all visible tags from hubTagIds.
+     *   2. For each ambiguous pair where BOTH tags are visible, exclude the one with the
+     *      larger |txnc| (farther from camera center). Ties go to the first of the pair.
+     *   3. Among the remaining candidates, return the one with the largest ta (closest tag).
+     *
+     * Returns -1 if no hub tag is visible.
+     * rawfiducials layout per tag: [id, txnc, tync, ta, distToCamera, distToRobot, ambiguity]
+     */
+    public static int getBestHubTagId(int[] hubTagIds, int[][] ambiguousPairs) {
+        double[] raw = rawFiducialsSub.get();
+        int maxVisible = hubTagIds.length;
+
+        // Parallel arrays for visible hub tags — avoids per-cycle heap allocation
+        int[]     seenIds  = new int[maxVisible];
+        double[]  seenTx   = new double[maxVisible];
+        double[]  seenTa   = new double[maxVisible];
+        boolean[] excluded = new boolean[maxVisible];
+        int count = 0;
+
+        for (int i = 0; i + 7 <= raw.length; i += 7) {
+            int id = (int) raw[i];
+            for (int hubId : hubTagIds) {
+                if (id == hubId) {
+                    seenIds[count]  = id;
+                    seenTx[count]   = raw[i + 1]; // txnc
+                    seenTa[count]   = raw[i + 3]; // ta
+                    count++;
+                    break;
+                }
+            }
+        }
+
+        if (count == 0) return -1;
+
+        // Resolve ambiguous pairs: exclude the tag that is farther off-center
+        for (int[] pair : ambiguousPairs) {
+            int idx0 = -1, idx1 = -1;
+            for (int j = 0; j < count; j++) {
+                if      (seenIds[j] == pair[0]) idx0 = j;
+                else if (seenIds[j] == pair[1]) idx1 = j;
+            }
+            if (idx0 != -1 && idx1 != -1) {
+                // Both visible — keep the one with smaller |tx| (more centered)
+                if (Math.abs(seenTx[idx0]) <= Math.abs(seenTx[idx1])) {
+                    excluded[idx1] = true;
+                } else {
+                    excluded[idx0] = true;
+                }
+            }
+        }
+
+        // Pick largest ta (closest) among non-excluded candidates
+        double bestTa = -1;
+        int bestId = -1;
+        for (int j = 0; j < count; j++) {
+            if (!excluded[j] && seenTa[j] > bestTa) {
+                bestTa = seenTa[j];
+                bestId = seenIds[j];
+            }
+        }
+        return bestId;
+    }
+
+    /**
+     * Returns the tag ID (from tagIds) with the smallest ta (farthest visible), or -1 if none.
+     * Use this to lock onto a specific hub tag at alignment start.
+     * rawfiducials layout per tag: [id, txnc, tync, ta, distToCamera, distToRobot, ambiguity]
+     */
+    public static int getSmallestTaTagId(int[] tagIds) {
+        double[] raw = rawFiducialsSub.get();
+        double smallestTa = Double.MAX_VALUE;
+        int result = -1;
+        for (int i = 0; i + 7 <= raw.length; i += 7) {
+            int seenId = (int) raw[i];
+            for (int id : tagIds) {
+                if (id == seenId) {
+                    double ta = raw[i + 3];
+                    if (ta < smallestTa) { smallestTa = ta; result = seenId; }
+                    break;
+                }
+            }
+        }
+        return result;
+    }
+
+    /**
      * Checks if the Limelight has a valid target with the specified AprilTag ID.
      * Uses rawfiducials so it works in MegaTag2 mode (tid is unreliable there).
      */

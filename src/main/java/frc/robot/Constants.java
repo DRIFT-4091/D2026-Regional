@@ -98,9 +98,17 @@ public final class Constants {
     public static final double RED_HUB_CENTER_Y  = 4.034536;
 
     // ---------------- APRILTAG CONSTANTS ----------------
-    // REBUILT FRC Challenge AprilTag IDs
-    public static final int[] BLUE_HUB_TAG_IDS = {2,3,8,9,18,19,24,25}; // tag 7, 13, 14 is a TRENCH tag, not a hub tag
-    public static final int[] RED_HUB_TAG_IDS = {4,5,10,11,20,21,26,27}; // tag 23 is not a hub tag
+    // 2026 REBUILT AprilTag IDs by zone
+    public static final int[] HUB_TAG_IDS         = {9, 10, 11, 2, 8, 5, 18, 27, 21, 24, 26, 25, 23};
+    public static final int[] HUMAN_PLAYER_TAG_IDS = {13, 14, 29, 30};
+    public static final int[] TRENCH_TAG_IDS       = {6, 7, 12, 1, 17, 28, 22}; // 23 is a trench tag
+
+    /**
+     * Hub tag pairs that can be confused when both are visible at once.
+     * When both tags of a pair are detected, align to the one with the smaller |tx|
+     * (more centered in the camera view) rather than the closest by area.
+     */
+    public static final int[][] HUB_AMBIGUOUS_PAIRS = {{8, 9}, {10, 11}, {27, 26}, {24, 25}};
 
     // ---------------- AIM ASSIST PID CONSTANTS ----------------
     // For 10–12 ball bursts: small KI helps correct steady drift while holding on target.
@@ -129,12 +137,12 @@ public final class Constants {
         // TA is 0–1 (fraction of image area) as returned by Limelight.
         private static final InterpolatingDoubleTreeMap TA_TO_RPS = new InterpolatingDoubleTreeMap();
         static {
-            TA_TO_RPS.put(0.0,  85.0);
-            TA_TO_RPS.put(0.2,  75.0);
-            TA_TO_RPS.put(0.4,  55.0);
-            TA_TO_RPS.put(0.7,  40.0);
+            TA_TO_RPS.put(0.0,  70.0);
+            TA_TO_RPS.put(0.2,  60.0);
+            TA_TO_RPS.put(0.4,  50.0);
+            TA_TO_RPS.put(0.7,  37.0);
             TA_TO_RPS.put(0.85,  30.0);
-            TA_TO_RPS.put(1.0,  20.0);  // cap close range
+            TA_TO_RPS.put(1.0,  28.0);  // cap close range
         }
 
         /** Target shooter RPS from Limelight TA (0–1). Clamps TA to [0, 1]. Returns 0 if no target. */

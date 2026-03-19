@@ -1,4 +1,4 @@
-package frc.robot;
+package frc.robot.dashboard;
 
 import com.ctre.phoenix6.hardware.CANcoder;
 import com.ctre.phoenix6.hardware.TalonFX;
@@ -14,6 +14,7 @@ import edu.wpi.first.networktables.NetworkTableInstance;
 import edu.wpi.first.networktables.StringPublisher;
 import edu.wpi.first.networktables.StructPublisher;
 
+import frc.robot.assist.DriverAssist;
 import frc.robot.subsystems.CommandSwerveDrivetrain;
 import frc.robot.vision.Limelight;
 import frc.robot.vision.MegaTag;
@@ -66,15 +67,22 @@ public class Telemetry {
     private final StringPublisher  limelightTagIds       = limelightTable.getStringTopic("visibleTagIds").publish();
     private final BooleanPublisher limelightHasAllianceTarget = limelightTable.getBooleanTopic("hasAllianceTarget").publish();
 
-    /* AimAssist PID diagnostics (heading-based pose alignment) */
-    private final NetworkTable aimTable                  = inst.getTable("AimAssist");
-    private final BooleanPublisher aimActive             = aimTable.getBooleanTopic("active").publish();
-    private final BooleanPublisher aimAimed              = aimTable.getBooleanTopic("isAimed").publish();
-    private final DoublePublisher aimCurrentHeading_deg  = aimTable.getDoubleTopic("currentHeading_deg").publish();
-    private final DoublePublisher aimDesiredHeading_deg  = aimTable.getDoubleTopic("desiredHeading_deg").publish();
-    private final DoublePublisher aimHeadingError_deg    = aimTable.getDoubleTopic("headingError_deg").publish();
-    private final DoublePublisher aimOutput_radps        = aimTable.getDoubleTopic("output_radps").publish();
-    private final DoublePublisher aimDistance_m          = aimTable.getDoubleTopic("distance_m").publish();
+    /* AimAssist PID diagnostics (camera TX-based alignment) */
+    private final NetworkTable aimTable          = inst.getTable("AimAssist");
+    private final BooleanPublisher aimActive     = aimTable.getBooleanTopic("active").publish();
+    private final BooleanPublisher aimAimed      = aimTable.getBooleanTopic("isAimed").publish();
+    private final DoublePublisher aimCurrentTx_deg  = aimTable.getDoubleTopic("currentTx_deg").publish();
+    private final DoublePublisher aimTargetTx_deg   = aimTable.getDoubleTopic("targetTx_deg").publish();
+    private final DoublePublisher aimTxError_deg    = aimTable.getDoubleTopic("txError_deg").publish();
+    private final DoublePublisher aimOutput_radps   = aimTable.getDoubleTopic("output_radps").publish();
+    private final DoublePublisher aimDistance_m     = aimTable.getDoubleTopic("distance_m").publish();
+    private final DoublePublisher aimLockedTagId    = aimTable.getDoubleTopic("lockedTagId").publish();
+
+    /* Vision: raw MegaTag pose (camera-only, not fused with odometry) */
+    private final NetworkTable visionTable            = inst.getTable("Vision");
+    private final StructPublisher<Pose2d> megaTagPose =
+            visionTable.getStructTopic("MegaTagPose", Pose2d.struct).publish();
+    private final BooleanPublisher megaTagHasPose     = visionTable.getBooleanTopic("hasMegaTagPose").publish();
 
     private static final double ROTATIONS_TO_DEGREES = 360.0;
 
@@ -159,14 +167,20 @@ public class Telemetry {
         limelightTa_percent.set(Limelight.ta());
         limelightHasAllianceTarget.set(driverAssist.hasAnyAllianceTarget());
 
-        /* AimAssist diagnostics (heading-based pose alignment) */
+        /* AimAssist diagnostics (camera TX-based alignment) */
         aimActive.set(driverAssist.isAimActive());
         aimAimed.set(driverAssist.isAimed());
-        aimCurrentHeading_deg.set(driverAssist.getLastCurrentHeadingDeg());
-        aimDesiredHeading_deg.set(driverAssist.getLastDesiredHeadingDeg());
-        aimHeadingError_deg.set(driverAssist.getLastHeadingErrorDeg());
+        aimCurrentTx_deg.set(driverAssist.getLastTxDeg());
+        aimTargetTx_deg.set(0.0);
+        aimTxError_deg.set(driverAssist.getLastHeadingErrorDeg());
         aimOutput_radps.set(driverAssist.getLastAimOutput());
         aimDistance_m.set(driverAssist.getLastDistanceM());
+        aimLockedTagId.set(driverAssist.getLockedTagId());
+
+        /* Vision: raw MegaTag pose from camera */
+        Pose2d accepted = megaTag.getLastAcceptedPose();
+        megaTagHasPose.set(accepted != null);
+        if (accepted != null) megaTagPose.set(accepted);
 
         // rawfiducials: count detected tags and build comma-separated ID string
         double[] raw = Limelight.getRawFiducials();
